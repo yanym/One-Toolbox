@@ -38,3 +38,6 @@ out/
 .vscode/
 *.sublime-project
 *.sublime-workspace
+
+# OS-specific files
+.DS_Store
