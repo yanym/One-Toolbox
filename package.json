@@ -2,6 +2,7 @@
   "name": "json-toolkit",
   "version": "1.0.0",
   "private": true,
+  "homepage": "https://yanym.github.io/One-Toolbox",
   "description": "A comprehensive JSON toolkit with validation, formatting, comparison, and conversion features",
   "keywords": [
     "json",
