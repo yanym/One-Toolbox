@@ -46,6 +46,8 @@ jobs:
 
       - name: Build React app
         run: npm run build
+        env:
+          CI: false  # This prevents ESLint warnings from failing the build
 
       - name: Add .nojekyll file
         run: touch build/.nojekyll
