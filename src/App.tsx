@@ -305,17 +305,44 @@ function App() {
               variant="h5" 
               component="div" 
               sx={{ 
-                flexGrow: 1, 
                 fontWeight: 700,
                 background: 'linear-gradient(45deg, #ffffff 30%, #e3f2fd 90%)',
                 backgroundClip: 'text',
                 WebkitBackgroundClip: 'text',
                 WebkitTextFillColor: 'transparent',
-                letterSpacing: '-0.02em'
+                letterSpacing: '-0.02em',
+                mr: 2
               }}
             >
               JSON Toolkit
             </Typography>
+            <Box 
+              component="a" 
+              href="https://github.com/yanym/One-Toolbox" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              sx={{ 
+                display: 'flex',
+                alignItems: 'center',
+                textDecoration: 'none',
+                mr: 1,
+                transition: 'transform 0.2s ease',
+                '&:hover': {
+                  transform: 'scale(1.05)'
+                }
+              }}
+            >
+              <Box
+                component="img"
+                src="https://img.shields.io/github/stars/yanym/One-Toolbox?style=social"
+                alt="GitHub stars"
+                sx={{
+                  height: 20,
+                  filter: darkMode ? 'invert(1)' : 'none',
+                }}
+              />
+            </Box>
+            <Box sx={{ flexGrow: 1 }} />
             <Tooltip 
               title={
                 <Box>
