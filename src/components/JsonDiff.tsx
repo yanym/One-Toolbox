@@ -9,465 +9,261 @@ import {
   Stack,
   Alert,
   Chip,
-  Divider
+  useTheme,
+  alpha
 } from '@mui/material';
 import {
   ContentCopy,
   Clear,
   CompareArrows,
-  SwapHoriz
+  SwapHoriz,
+  Add,
+  Remove,
+  Edit as EditIcon
 } from '@mui/icons-material';
 import Editor from '@monaco-editor/react';
 import * as jsondiffpatch from 'jsondiffpatch';
 
+interface DiffEntry {
+  path: string;
+  type: 'added' | 'modified' | 'deleted';
+  oldValue?: any;
+  newValue?: any;
+}
+
 const JsonDiff: React.FC = () => {
+  const theme = useTheme();
+  const darkMode = theme.palette.mode === 'dark';
+
   const [leftJson, setLeftJson] = useState('{\n  "name": "John Doe",\n  "age": 30,\n  "city": "New York",\n  "hobbies": ["reading", "coding"]\n}');
   const [rightJson, setRightJson] = useState('{\n  "name": "John Smith",\n  "age": 32,\n  "city": "New York",\n  "hobbies": ["reading", "gaming", "traveling"]\n}');
-  const [diffResult, setDiffResult] = useState<any>(null);
-  const [diffHtml, setDiffHtml] = useState('');
+  const [diffEntries, setDiffEntries] = useState<DiffEntry[]>([]);
   const [error, setError] = useState('');
-  const [stats, setStats] = useState<{
-    added: number;
-    modified: number;
-    deleted: number;
-    unchanged: number;
-  } | null>(null);
+  const [stats, setStats] = useState<{ added: number; modified: number; deleted: number; unchanged: number } | null>(null);
 
   const calculateDiff = useCallback(() => {
     try {
       const left = JSON.parse(leftJson);
       const right = JSON.parse(rightJson);
-      
-      // Create jsondiffpatch instance
+
       const instance = jsondiffpatch.create({
-        objectHash: function(obj: any) {
-          return obj.id || obj._id || obj.name || JSON.stringify(obj);
-        },
-        arrays: {
-          detectMove: true,
-          includeValueOnMove: false
-        }
+        objectHash: (obj: any) => obj.id || obj._id || obj.name || JSON.stringify(obj),
+        arrays: { detectMove: true, includeValueOnMove: false },
       });
-      
+
       const delta = instance.diff(left, right);
-      setDiffResult(delta);
-      
+      const entries: DiffEntry[] = [];
+
+      const traverse = (obj: any, path: string[] = []) => {
+        if (!obj || typeof obj !== 'object') return;
+        Object.keys(obj).forEach(key => {
+          const value = obj[key];
+          const currentPath = [...path, key].join('.');
+          if (Array.isArray(value)) {
+            if (value.length === 1) {
+              entries.push({ path: currentPath, type: 'added', newValue: value[0] });
+            } else if (value.length === 2) {
+              entries.push({ path: currentPath, type: 'modified', oldValue: value[0], newValue: value[1] });
+            } else if (value.length === 3 && value[2] === 0) {
+              entries.push({ path: currentPath, type: 'deleted', oldValue: value[0] });
+            }
+          } else if (typeof value === 'object') {
+            traverse(value, [...path, key]);
+          }
+        });
+      };
+
       if (delta) {
-        // Create a visual diff display
-        const html = createVisualDiff(left, right, delta);
-        setDiffHtml(html);
-        
-        // Calculate statistics
-        const diffStats = calculateDiffStats(delta, left, right);
-        setStats(diffStats);
+        traverse(delta);
+        const leftProps = countProperties(left);
+        const rightProps = countProperties(right);
+        const modified = entries.filter(e => e.type === 'modified').length;
+        setStats({
+          added: entries.filter(e => e.type === 'added').length,
+          modified,
+          deleted: entries.filter(e => e.type === 'deleted').length,
+          unchanged: Math.max(0, Math.min(leftProps, rightProps) - modified),
+        });
       } else {
-        setDiffHtml('<div style="text-align: center; color: #666; font-style: italic; padding: 20px;">No differences found</div>');
         setStats({ added: 0, modified: 0, deleted: 0, unchanged: countProperties(left) });
       }
-      
+
+      setDiffEntries(entries);
       setError('');
     } catch (err: any) {
       setError(err.message || 'Invalid JSON in one or both inputs');
-      setDiffResult(null);
-      setDiffHtml('');
+      setDiffEntries([]);
       setStats(null);
     }
   }, [leftJson, rightJson]);
 
-  const createVisualDiff = (left: any, right: any, delta: any): string => {
-    const formatValue = (value: any): string => {
-      if (typeof value === 'string') {
-        return `"${value}"`;
-      }
-      return JSON.stringify(value, null, 2);
-    };
-
-    const renderDiff = (obj: any, path: string[] = []): string => {
-      let html = '<ul style="margin: 0; padding-left: 20px; list-style: none;">';
-      
-      Object.keys(obj).forEach(key => {
-        const value = obj[key];
-        const currentPath = [...path, key];
-        const pathStr = currentPath.join('.');
-        
-        if (Array.isArray(value)) {
-          if (value.length === 1) {
-            // Added
-            html += `<li style="background-color: #d4edda; padding: 4px 8px; margin: 2px 0; border-radius: 3px;">
-              <span style="color: #155724; font-weight: bold;">+ ${pathStr}:</span> 
-              <span style="color: #155724;">${formatValue(value[0])}</span>
-            </li>`;
-          } else if (value.length === 2) {
-            // Modified
-            html += `<li style="background-color: #fff3cd; padding: 4px 8px; margin: 2px 0; border-radius: 3px;">
-              <span style="color: #856404; font-weight: bold;">~ ${pathStr}:</span><br/>
-              <span style="color: #721c24; text-decoration: line-through; background-color: #f8d7da; padding: 2px 4px; border-radius: 3px; margin-right: 8px;">${formatValue(value[0])}</span>
-              <span style="color: #155724; background-color: #c3e6cb; padding: 2px 4px; border-radius: 3px;">${formatValue(value[1])}</span>
-            </li>`;
-          } else if (value.length === 3 && value[2] === 0) {
-            // Deleted
-            html += `<li style="background-color: #f8d7da; padding: 4px 8px; margin: 2px 0; border-radius: 3px;">
-              <span style="color: #721c24; font-weight: bold;">- ${pathStr}:</span> 
-              <span style="color: #721c24; text-decoration: line-through;">${formatValue(value[0])}</span>
-            </li>`;
-          }
-        } else if (typeof value === 'object' && value !== null) {
-          html += `<li style="margin: 4px 0;">
-            <span style="color: #0066cc; font-weight: bold;">${pathStr}:</span>
-            ${renderDiff(value, currentPath)}
-          </li>`;
-        }
-      });
-      
-      html += '</ul>';
-      return html;
-    };
-
-    if (!delta || Object.keys(delta).length === 0) {
-      return '<div style="text-align: center; color: #666; font-style: italic; padding: 20px;">No differences found</div>';
-    }
-
-    return `<div style="font-family: Consolas, Monaco, 'Courier New', monospace; font-size: 13px; line-height: 1.6;">
-      ${renderDiff(delta)}
-    </div>`;
-  };
-
-  const calculateDiffStats = (delta: any, left: any, right: any) => {
-    let added = 0;
-    let modified = 0;
-    let deleted = 0;
-    
-    const traverse = (obj: any, path: string[] = []) => {
-      if (!obj || typeof obj !== 'object') return;
-      
-      Object.keys(obj).forEach(key => {
-        const value = obj[key];
-        
-        if (Array.isArray(value)) {
-          if (value.length === 1) {
-            // Added
-            added++;
-          } else if (value.length === 2) {
-            // Modified
-            modified++;
-          } else if (value.length === 3 && value[2] === 0) {
-            // Deleted
-            deleted++;
-          }
-        } else if (typeof value === 'object' && value !== null) {
-          traverse(value, [...path, key]);
-        }
-      });
-    };
-    
-    if (delta) {
-      traverse(delta);
-    }
-    
-    const leftProps = countProperties(left);
-    const rightProps = countProperties(right);
-    const unchanged = Math.max(0, Math.min(leftProps, rightProps) - modified);
-    
-    return { added, modified, deleted, unchanged };
-  };
-
   const countProperties = (obj: any): number => {
     if (typeof obj !== 'object' || obj === null) return 0;
-    if (Array.isArray(obj)) {
-      return obj.reduce((sum: number, item: any) => sum + countProperties(item), 0);
-    }
-    return Object.keys(obj).length + Object.values(obj).reduce((sum: number, value: any) => sum + countProperties(value), 0);
+    if (Array.isArray(obj)) return obj.reduce((s: number, i: any) => s + countProperties(i), 0);
+    return Object.keys(obj).length + Object.values(obj).reduce((s: number, v: any) => s + countProperties(v), 0);
   };
 
   const swapInputs = () => {
-    const temp = leftJson;
     setLeftJson(rightJson);
-    setRightJson(temp);
+    setRightJson(leftJson);
   };
 
   const clearInputs = () => {
     setLeftJson('');
     setRightJson('');
-    setDiffResult(null);
-    setDiffHtml('');
+    setDiffEntries([]);
     setError('');
     setStats(null);
   };
 
   const copyToClipboard = async (text: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-    } catch (error) {
-      console.error('Failed to copy to clipboard:', error);
-    }
-  };
-
-  const copyDiffAsJson = () => {
-    if (diffResult) {
-      copyToClipboard(JSON.stringify(diffResult, null, 2));
-    }
+    try { await navigator.clipboard.writeText(text); } catch {}
   };
 
   useEffect(() => {
-    // Auto-calculate diff when inputs change
-    const timeoutId = setTimeout(() => {
-      if (leftJson.trim() && rightJson.trim()) {
-        calculateDiff();
-      }
+    const t = setTimeout(() => {
+      if (leftJson.trim() && rightJson.trim()) calculateDiff();
     }, 500);
-
-    return () => clearTimeout(timeoutId);
+    return () => clearTimeout(t);
   }, [leftJson, rightJson, calculateDiff]);
+
+  const formatValue = (v: any) => {
+    if (typeof v === 'string') return `"${v}"`;
+    if (typeof v === 'object') return JSON.stringify(v);
+    return String(v);
+  };
+
+  const DiffIcon = ({ type }: { type: 'added' | 'modified' | 'deleted' }) => {
+    const config = {
+      added: { icon: <Add sx={{ fontSize: 14 }} />, color: theme.palette.success.main, bg: alpha(theme.palette.success.main, 0.12) },
+      modified: { icon: <EditIcon sx={{ fontSize: 14 }} />, color: theme.palette.warning.main, bg: alpha(theme.palette.warning.main, 0.12) },
+      deleted: { icon: <Remove sx={{ fontSize: 14 }} />, color: theme.palette.error.main, bg: alpha(theme.palette.error.main, 0.12) },
+    };
+    const c = config[type];
+    return (
+      <Box sx={{ width: 24, height: 24, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: c.bg, color: c.color, flexShrink: 0 }}>
+        {c.icon}
+      </Box>
+    );
+  };
 
   return (
     <Box>
-      <Typography variant="h5" gutterBottom sx={{ fontWeight: 600, mb: 3 }}>
-        JSON Diff Compare
-      </Typography>
-
-      {/* Input Section */}
-      <Box sx={{ display: 'flex', gap: 2, mb: 3 }}>
-        {/* Left JSON Input */}
-        <Paper elevation={1} sx={{ flex: 1, p: 2, height: '400px', display: 'flex', flexDirection: 'column' }}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-            <Typography variant="h6" color="primary">Original JSON</Typography>
-            <Stack direction="row" spacing={1}>
-              <Tooltip title="Copy to Clipboard">
-                <IconButton onClick={() => copyToClipboard(leftJson)} color="primary" size="small">
-                  <ContentCopy />
-                </IconButton>
-              </Tooltip>
-            </Stack>
+      {/* Editors */}
+      <Box sx={{ display: 'flex', gap: 2, mb: 2, flexDirection: { xs: 'column', md: 'row' } }}>
+        {/* Left */}
+        <Paper variant="outlined" sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <Box sx={{ px: 2, py: 1.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: `1px solid`, borderColor: 'divider' }}>
+            <Typography variant="body2" fontWeight={600}>Original</Typography>
+            <Tooltip title="Copy"><IconButton size="small" onClick={() => copyToClipboard(leftJson)}><ContentCopy sx={{ fontSize: 16 }} /></IconButton></Tooltip>
           </Box>
-          
-          <Box sx={{ flexGrow: 1, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
-            <Editor
-              height="100%"
-              defaultLanguage="json"
-              value={leftJson}
-              onChange={(value) => setLeftJson(value || '')}
-              theme="vs-dark"
-              options={{
-                minimap: { enabled: false },
-                scrollBeyondLastLine: false,
-                fontSize: 14,
-                lineNumbers: 'on',
-                wordWrap: 'on'
-              }}
-            />
+          <Box sx={{ height: 320 }}>
+            <Editor height="100%" defaultLanguage="json" value={leftJson} onChange={(v) => setLeftJson(v || '')} theme={darkMode ? 'vs-dark' : 'light'} options={{ minimap: { enabled: false }, scrollBeyondLastLine: false, fontSize: 13, lineNumbers: 'on', wordWrap: 'on', padding: { top: 8 } }} />
           </Box>
         </Paper>
 
-        {/* Swap Button */}
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', py: 2 }}>
-          <Tooltip title="Swap JSONs">
-            <IconButton onClick={swapInputs} color="primary" size="large">
-              <SwapHoriz />
+        {/* Swap */}
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Tooltip title="Swap">
+            <IconButton onClick={swapInputs} size="small" sx={{ border: `1px solid`, borderColor: 'divider' }}>
+              <SwapHoriz sx={{ fontSize: 18 }} />
             </IconButton>
           </Tooltip>
         </Box>
 
-        {/* Right JSON Input */}
-        <Paper elevation={1} sx={{ flex: 1, p: 2, height: '400px', display: 'flex', flexDirection: 'column' }}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-            <Typography variant="h6" color="secondary">Modified JSON</Typography>
-            <Stack direction="row" spacing={1}>
-              <Tooltip title="Copy to Clipboard">
-                <IconButton onClick={() => copyToClipboard(rightJson)} color="primary" size="small">
-                  <ContentCopy />
-                </IconButton>
-              </Tooltip>
-            </Stack>
+        {/* Right */}
+        <Paper variant="outlined" sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <Box sx={{ px: 2, py: 1.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: `1px solid`, borderColor: 'divider' }}>
+            <Typography variant="body2" fontWeight={600}>Modified</Typography>
+            <Tooltip title="Copy"><IconButton size="small" onClick={() => copyToClipboard(rightJson)}><ContentCopy sx={{ fontSize: 16 }} /></IconButton></Tooltip>
           </Box>
-          
-          <Box sx={{ flexGrow: 1, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
-            <Editor
-              height="100%"
-              defaultLanguage="json"
-              value={rightJson}
-              onChange={(value) => setRightJson(value || '')}
-              theme="vs-dark"
-              options={{
-                minimap: { enabled: false },
-                scrollBeyondLastLine: false,
-                fontSize: 14,
-                lineNumbers: 'on',
-                wordWrap: 'on'
-              }}
-            />
+          <Box sx={{ height: 320 }}>
+            <Editor height="100%" defaultLanguage="json" value={rightJson} onChange={(v) => setRightJson(v || '')} theme={darkMode ? 'vs-dark' : 'light'} options={{ minimap: { enabled: false }, scrollBeyondLastLine: false, fontSize: 13, lineNumbers: 'on', wordWrap: 'on', padding: { top: 8 } }} />
           </Box>
         </Paper>
       </Box>
 
-      {/* Action Buttons */}
-      <Box sx={{ display: 'flex', justifyContent: 'center', gap: 2, mb: 3 }}>
-        <Button
-          variant="contained"
-          onClick={calculateDiff}
-          startIcon={<CompareArrows />}
-          size="large"
-        >
-          Compare JSONs
-        </Button>
-        <Button
-          variant="outlined"
-          onClick={clearInputs}
-          startIcon={<Clear />}
-        >
-          Clear All
-        </Button>
-        {diffResult && (
-          <Button
-            variant="outlined"
-            onClick={copyDiffAsJson}
-            startIcon={<ContentCopy />}
-          >
-            Copy Diff as JSON
-          </Button>
-        )}
-      </Box>
+      {/* Actions */}
+      <Stack direction="row" spacing={1} sx={{ mb: 2 }} flexWrap="wrap" useFlexGap>
+        <Button variant="contained" size="small" onClick={calculateDiff} startIcon={<CompareArrows />}>Compare</Button>
+        <Button variant="outlined" size="small" onClick={clearInputs} startIcon={<Clear />}>Clear</Button>
+      </Stack>
 
-      {/* Error Display */}
-      {error && (
-        <Alert severity="error" sx={{ mb: 3 }}>
-          {error}
-        </Alert>
-      )}
+      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
-      {/* Statistics */}
+      {/* Stats */}
       {stats && (
-        <Paper elevation={1} sx={{ p: 2, mb: 3 }}>
-          <Typography variant="h6" gutterBottom>Diff Statistics</Typography>
-          <Stack direction="row" spacing={2} flexWrap="wrap">
-            <Chip 
-              label={`Added: ${stats.added}`} 
-              color="success" 
-              variant="outlined" 
-            />
-            <Chip 
-              label={`Modified: ${stats.modified}`} 
-              color="warning" 
-              variant="outlined" 
-            />
-            <Chip 
-              label={`Deleted: ${stats.deleted}`} 
-              color="error" 
-              variant="outlined" 
-            />
-            <Chip 
-              label={`Unchanged: ${stats.unchanged}`} 
-              color="default" 
-              variant="outlined" 
-            />
-          </Stack>
+        <Stack direction="row" spacing={1} sx={{ mb: 2 }} flexWrap="wrap" useFlexGap>
+          <Chip size="small" label={`${stats.added} added`} sx={{ bgcolor: alpha(theme.palette.success.main, 0.1), color: theme.palette.success.main, fontWeight: 600 }} />
+          <Chip size="small" label={`${stats.modified} changed`} sx={{ bgcolor: alpha(theme.palette.warning.main, 0.1), color: theme.palette.warning.main, fontWeight: 600 }} />
+          <Chip size="small" label={`${stats.deleted} removed`} sx={{ bgcolor: alpha(theme.palette.error.main, 0.1), color: theme.palette.error.main, fontWeight: 600 }} />
+          <Chip size="small" label={`${stats.unchanged} unchanged`} variant="outlined" />
+        </Stack>
+      )}
+
+      {/* Diff results — friendly card list */}
+      {diffEntries.length > 0 && (
+        <Paper variant="outlined" sx={{ overflow: 'hidden' }}>
+          <Box sx={{ px: 2, py: 1.5, borderBottom: `1px solid`, borderColor: 'divider', bgcolor: darkMode ? alpha('#fff', 0.02) : alpha('#000', 0.02) }}>
+            <Typography variant="body2" fontWeight={600}>
+              {diffEntries.length} difference{diffEntries.length !== 1 ? 's' : ''} found
+            </Typography>
+          </Box>
+          <Box sx={{ maxHeight: 460, overflow: 'auto' }}>
+            {diffEntries.map((entry, i) => (
+              <Box
+                key={i}
+                sx={{
+                  px: 2,
+                  py: 1.5,
+                  display: 'flex',
+                  gap: 1.5,
+                  alignItems: 'flex-start',
+                  borderBottom: i < diffEntries.length - 1 ? `1px solid` : 'none',
+                  borderColor: 'divider',
+                  '&:hover': { bgcolor: darkMode ? alpha('#fff', 0.02) : alpha('#000', 0.015) },
+                }}
+              >
+                <DiffIcon type={entry.type} />
+                <Box sx={{ flex: 1, minWidth: 0 }}>
+                  <Typography variant="body2" sx={{ fontFamily: 'monospace', fontWeight: 600, fontSize: '0.8rem', color: 'text.primary', mb: 0.3 }}>
+                    {entry.path}
+                  </Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                    <Typography component="span" sx={{
+                      fontSize: '0.8rem',
+                      fontFamily: 'monospace',
+                      color: entry.type === 'added' ? 'text.disabled' : theme.palette.error.main,
+                      bgcolor: entry.type === 'added' ? 'transparent' : alpha(theme.palette.error.main, 0.08),
+                      px: entry.type === 'added' ? 0 : 0.8,
+                      py: 0.2,
+                      borderRadius: 1,
+                    }}>
+                      {entry.type === 'added' ? '—' : formatValue(entry.oldValue)}
+                    </Typography>
+                    <Typography sx={{ fontSize: '0.75rem', color: 'text.secondary' }}>&rarr;</Typography>
+                    <Typography component="span" sx={{
+                      fontSize: '0.8rem',
+                      fontFamily: 'monospace',
+                      color: entry.type === 'deleted' ? 'text.disabled' : theme.palette.success.main,
+                      bgcolor: entry.type === 'deleted' ? 'transparent' : alpha(theme.palette.success.main, 0.08),
+                      px: entry.type === 'deleted' ? 0 : 0.8,
+                      py: 0.2,
+                      borderRadius: 1,
+                    }}>
+                      {entry.type === 'deleted' ? '—' : formatValue(entry.newValue)}
+                    </Typography>
+                  </Box>
+                </Box>
+              </Box>
+            ))}
+          </Box>
         </Paper>
       )}
 
-      {/* Diff Result */}
-      {diffHtml && (
-        <Paper elevation={1} sx={{ p: 2 }}>
-          <Typography variant="h6" gutterBottom>Differences</Typography>
-          <Divider sx={{ mb: 2 }} />
-          <Box
-            sx={{
-              '& .jsondiffpatch-delta': {
-                fontFamily: 'Consolas, Monaco, "Courier New", monospace',
-                fontSize: '13px',
-                lineHeight: 1.6,
-                border: '1px solid #ddd',
-                borderRadius: '4px',
-                overflow: 'auto',
-                maxHeight: '600px',
-              },
-              '& .jsondiffpatch-node': {
-                position: 'relative',
-              },
-              '& .jsondiffpatch-property-name': {
-                fontWeight: 'bold',
-                color: '#0066cc',
-              },
-              '& .jsondiffpatch-added': {
-                backgroundColor: '#d4edda !important',
-                '& .jsondiffpatch-value': {
-                  color: '#155724',
-                  backgroundColor: '#c3e6cb',
-                  padding: '2px 4px',
-                  borderRadius: '3px',
-                },
-                '& .jsondiffpatch-property-name': {
-                  color: '#155724',
-                },
-              },
-              '& .jsondiffpatch-modified': {
-                backgroundColor: '#fff3cd !important',
-                '& .jsondiffpatch-left-value': {
-                  backgroundColor: '#f8d7da',
-                  color: '#721c24',
-                  textDecoration: 'line-through',
-                  padding: '2px 4px',
-                  borderRadius: '3px',
-                  marginRight: '8px',
-                },
-                '& .jsondiffpatch-right-value': {
-                  backgroundColor: '#c3e6cb',
-                  color: '#155724',
-                  padding: '2px 4px',
-                  borderRadius: '3px',
-                },
-                '& .jsondiffpatch-property-name': {
-                  color: '#856404',
-                },
-              },
-              '& .jsondiffpatch-deleted': {
-                backgroundColor: '#f8d7da !important',
-                '& .jsondiffpatch-value': {
-                  color: '#721c24',
-                  backgroundColor: '#f5c6cb',
-                  textDecoration: 'line-through',
-                  padding: '2px 4px',
-                  borderRadius: '3px',
-                },
-                '& .jsondiffpatch-property-name': {
-                  color: '#721c24',
-                },
-              },
-              '& .jsondiffpatch-unchanged': {
-                color: '#6c757d',
-                fontStyle: 'italic',
-                textAlign: 'center',
-                padding: '20px',
-                backgroundColor: '#f8f9fa',
-                borderRadius: '4px',
-              },
-              '& .jsondiffpatch-textdiff-location': {
-                color: '#6c757d',
-                fontSize: '11px',
-              },
-              '& .jsondiffpatch-textdiff-line': {
-                display: 'block',
-                marginBottom: '2px',
-              },
-              '& .jsondiffpatch-textdiff-line-number': {
-                display: 'inline-block',
-                width: '40px',
-                textAlign: 'right',
-                color: '#999',
-                marginRight: '10px',
-                fontSize: '11px',
-              },
-              '& ul': {
-                listStyle: 'none',
-                padding: '0',
-                margin: '8px 0',
-              },
-              '& li': {
-                padding: '4px 8px',
-                margin: '2px 0',
-                borderRadius: '3px',
-              },
-            }}
-            dangerouslySetInnerHTML={{ __html: diffHtml }}
-          />
+      {stats && diffEntries.length === 0 && !error && (
+        <Paper variant="outlined" sx={{ p: 4, textAlign: 'center' }}>
+          <Typography variant="body2" color="text.secondary">No differences found — the JSONs are identical.</Typography>
         </Paper>
       )}
     </Box>

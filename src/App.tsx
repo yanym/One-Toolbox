@@ -6,28 +6,39 @@ import {
   AppBar,
   Toolbar,
   Typography,
-  Container,
   Box,
-  Tabs,
-  Tab,
   Paper,
   IconButton,
   Tooltip,
   Fade,
-  useMediaQuery
+  useMediaQuery,
+  TextField,
+  InputAdornment,
+  List,
+  ListItemButton,
+  ListItemIcon,
+  ListItemText,
+  Drawer,
+  Chip,
+  Divider,
+  alpha
 } from '@mui/material';
 import {
   Code,
   CompareArrows,
   Transform,
-  Visibility,
+  AccountTree,
   TextFields,
   DarkMode,
   LightMode,
   DataObject,
   Security,
   Storage,
-  Build
+  Search,
+  Menu as MenuIcon,
+  Build,
+  Link,
+  Schedule,
 } from '@mui/icons-material';
 import './App.css';
 import JsonValidator from './components/JsonValidator';
@@ -38,217 +49,236 @@ import StringEscape from './components/StringEscape';
 import XmlFormatter from './components/XmlFormatter';
 import Base64Converter from './components/Base64Converter';
 import ProtobufConverter from './components/ProtobufConverter';
+import UrlEncoderDecoder from './components/UrlEncoderDecoder';
+import TimestampConverter from './components/TimestampConverter';
 
-interface TabPanelProps {
-  children?: React.ReactNode;
-  index: number;
-  value: number;
+interface ToolConfig {
+  id: string;
+  label: string;
+  shortLabel: string;
+  icon: React.ReactElement;
+  category: 'json' | 'text' | 'encoding';
+  description: string;
+  component: React.ReactNode;
 }
 
-function TabPanel(props: TabPanelProps) {
-  const { children, value, index, ...other } = props;
-
-  return (
-    <div
-      role="tabpanel"
-      hidden={value !== index}
-      id={`json-tabpanel-${index}`}
-      aria-labelledby={`json-tab-${index}`}
-      {...other}
-    >
-      {value === index && (
-        <Box sx={{ p: 3 }}>
-          {children}
-        </Box>
-      )}
-    </div>
-  );
-}
-
-function a11yProps(index: number) {
-  return {
-    id: `json-tab-${index}`,
-    'aria-controls': `json-tabpanel-${index}`,
-  };
-}
+const DRAWER_WIDTH = 280;
 
 function App() {
-  const [tabValue, setTabValue] = useState(0);
+  const [activeToolId, setActiveToolId] = useState('json-formatter');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const [darkMode, setDarkMode] = useState(() => {
-    // Initialize from localStorage or default to dark mode
     const saved = localStorage.getItem('darkMode');
-    if (saved !== null) {
-      return JSON.parse(saved);
-    }
-    // Default to dark mode instead of system preference
+    if (saved !== null) return JSON.parse(saved);
     return true;
   });
 
-  const prefersDarkMode = useMediaQuery('(prefers-color-scheme: dark)');
+  const isMobile = useMediaQuery('(max-width:960px)');
+
+  const tools: ToolConfig[] = useMemo(() => [
+    {
+      id: 'json-formatter',
+      label: 'JSON Formatter',
+      shortLabel: 'Format',
+      icon: <Code />,
+      category: 'json',
+      description: 'Validate, format, and minify JSON',
+      component: <JsonValidator />,
+    },
+    {
+      id: 'json-diff',
+      label: 'JSON Diff',
+      shortLabel: 'Diff',
+      icon: <CompareArrows />,
+      category: 'json',
+      description: 'Compare two JSON objects visually',
+      component: <JsonDiff />,
+    },
+    {
+      id: 'json-viewer',
+      label: 'JSON Viewer',
+      shortLabel: 'View',
+      icon: <AccountTree />,
+      category: 'json',
+      description: 'Explore JSON as an interactive tree',
+      component: <JsonViewer />,
+    },
+    {
+      id: 'json-serializer',
+      label: 'JSON Serializer',
+      shortLabel: 'Serialize',
+      icon: <Transform />,
+      category: 'json',
+      description: 'Convert JSON to code in multiple languages',
+      component: <JsonSerializer />,
+    },
+    {
+      id: 'string-escape',
+      label: 'String Escape',
+      shortLabel: 'Escape',
+      icon: <TextFields />,
+      category: 'text',
+      description: 'Escape and unescape strings',
+      component: <StringEscape />,
+    },
+    {
+      id: 'xml-formatter',
+      label: 'XML Formatter',
+      shortLabel: 'XML',
+      icon: <DataObject />,
+      category: 'text',
+      description: 'Format and validate XML documents',
+      component: <XmlFormatter />,
+    },
+    {
+      id: 'base64',
+      label: 'Base64 Converter',
+      shortLabel: 'Base64',
+      icon: <Security />,
+      category: 'encoding',
+      description: 'Encode and decode Base64 strings',
+      component: <Base64Converter />,
+    },
+    {
+      id: 'protobuf',
+      label: 'Protobuf Converter',
+      shortLabel: 'Protobuf',
+      icon: <Storage />,
+      category: 'encoding',
+      description: 'Encode and decode Protocol Buffers',
+      component: <ProtobufConverter />,
+    },
+    {
+      id: 'url-encoder',
+      label: 'URL Encoder/Decoder',
+      shortLabel: 'URL',
+      icon: <Link />,
+      category: 'encoding',
+      description: 'Encode and decode URL components',
+      component: <UrlEncoderDecoder />,
+    },
+    {
+      id: 'timestamp',
+      label: 'Timestamp Converter',
+      shortLabel: 'Timestamp',
+      icon: <Schedule />,
+      category: 'text',
+      description: 'Convert Unix timestamps across all formats',
+      component: <TimestampConverter />,
+    },
+  ], []);
+
+  const categories = [
+    { id: 'json', label: 'JSON Tools' },
+    { id: 'text', label: 'Text & Markup' },
+    { id: 'encoding', label: 'Encoding' },
+  ] as const;
+
+  const filteredTools = useMemo(() => {
+    if (!searchQuery.trim()) return tools;
+    const q = searchQuery.toLowerCase();
+    return tools.filter(t =>
+      t.label.toLowerCase().includes(q) ||
+      t.description.toLowerCase().includes(q) ||
+      t.category.toLowerCase().includes(q)
+    );
+  }, [tools, searchQuery]);
+
+  const activeTool = tools.find(t => t.id === activeToolId) || tools[0];
 
   const theme = useMemo(() => createTheme({
     palette: {
       mode: darkMode ? 'dark' : 'light',
       primary: {
-        main: darkMode ? '#90caf9' : '#1976d2',
-        light: darkMode ? '#bbdefb' : '#42a5f5',
-        dark: darkMode ? '#64b5f6' : '#1565c0',
+        main: darkMode ? '#7c9eff' : '#4361ee',
+        light: darkMode ? '#a7bfff' : '#6b83f2',
+        dark: darkMode ? '#5a7de6' : '#2d47d0',
       },
       secondary: {
-        main: darkMode ? '#f48fb1' : '#d32f2f',
-        light: darkMode ? '#f8bbd9' : '#f44336',
-        dark: darkMode ? '#f06292' : '#c62828',
+        main: darkMode ? '#ff7eb3' : '#e63946',
       },
       background: {
-        default: darkMode ? '#0a0a0a' : '#f8f9fa',
-        paper: darkMode ? '#1a1a1a' : '#ffffff',
+        default: darkMode ? '#0d1117' : '#f6f8fa',
+        paper: darkMode ? '#161b22' : '#ffffff',
       },
       text: {
-        primary: darkMode ? '#ffffff' : '#212121',
-        secondary: darkMode ? '#b0b0b0' : '#757575',
+        primary: darkMode ? '#e6edf3' : '#1f2328',
+        secondary: darkMode ? '#8b949e' : '#656d76',
       },
-      divider: darkMode ? '#333333' : '#e0e0e0',
-      action: {
-        hover: darkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.04)',
-        selected: darkMode ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.08)',
-      },
+      divider: darkMode ? '#30363d' : '#d0d7de',
     },
     typography: {
-      fontFamily: '"Inter", "Roboto", "Helvetica", "Arial", sans-serif',
-      h4: {
-        fontWeight: 700,
-        letterSpacing: '-0.02em',
-      },
-      h5: {
-        fontWeight: 600,
-        letterSpacing: '-0.01em',
-      },
-      h6: {
-        fontWeight: 600,
-        letterSpacing: '-0.01em',
-      },
-      body1: {
-        lineHeight: 1.6,
-      },
-      body2: {
-        lineHeight: 1.5,
-      },
+      fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", sans-serif',
+      h5: { fontWeight: 600, letterSpacing: '-0.01em' },
+      h6: { fontWeight: 600, letterSpacing: '-0.01em', fontSize: '1rem' },
+      body2: { lineHeight: 1.5 },
     },
-    shape: {
-      borderRadius: 12,
-    },
+    shape: { borderRadius: 10 },
     components: {
       MuiCssBaseline: {
         styleOverrides: {
           body: {
             scrollbarWidth: 'thin',
-            scrollbarColor: darkMode ? '#555 #333' : '#ccc #f5f5f5',
+            scrollbarColor: darkMode ? '#484f58 #0d1117' : '#d0d7de #f6f8fa',
           },
         },
       },
       MuiPaper: {
         styleOverrides: {
           root: {
-            borderRadius: 16,
             backgroundImage: 'none',
-            boxShadow: darkMode 
-              ? '0 4px 20px rgba(0, 0, 0, 0.3), 0 1px 3px rgba(0, 0, 0, 0.2)'
-              : '0 4px 20px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.1)',
-            transition: 'box-shadow 0.3s ease-in-out, transform 0.2s ease-in-out',
-            '&:hover': {
-              transform: 'translateY(-2px)',
-              boxShadow: darkMode
-                ? '0 8px 30px rgba(0, 0, 0, 0.4), 0 2px 6px rgba(0, 0, 0, 0.3)'
-                : '0 8px 30px rgba(0, 0, 0, 0.12), 0 2px 6px rgba(0, 0, 0, 0.15)',
-            },
-          },
-        },
-      },
-      MuiTab: {
-        styleOverrides: {
-          root: {
-            textTransform: 'none',
-            fontWeight: 600,
-            fontSize: '0.95rem',
-            minHeight: 64,
-            padding: '12px 20px',
-            transition: 'all 0.2s ease-in-out',
-            '&:hover': {
-              backgroundColor: darkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.04)',
-              transform: 'translateY(-1px)',
-            },
-            '&.Mui-selected': {
-              fontWeight: 700,
-              color: darkMode ? '#90caf9' : '#1976d2',
-            },
+            borderRadius: 12,
           },
         },
       },
       MuiButton: {
         styleOverrides: {
           root: {
-            borderRadius: 10,
+            borderRadius: 8,
             textTransform: 'none',
             fontWeight: 600,
-            padding: '10px 24px',
-            transition: 'all 0.2s ease-in-out',
-            '&:hover': {
-              transform: 'translateY(-1px)',
-              boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
-            },
-          },
-          contained: {
-            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
-            '&:hover': {
-              boxShadow: '0 4px 16px rgba(0, 0, 0, 0.2)',
-            },
+            padding: '8px 20px',
           },
         },
       },
       MuiIconButton: {
         styleOverrides: {
           root: {
-            borderRadius: 10,
-            transition: 'all 0.2s ease-in-out',
-            '&:hover': {
-              transform: 'scale(1.05)',
-              backgroundColor: darkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.04)',
-            },
-          },
-        },
-      },
-      MuiAppBar: {
-        styleOverrides: {
-          root: {
-            background: darkMode 
-              ? 'linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%)'
-              : 'linear-gradient(135deg, #1976d2 0%, #1565c0 100%)',
-            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.1)',
+            borderRadius: 8,
           },
         },
       },
       MuiChip: {
         styleOverrides: {
           root: {
-            borderRadius: 8,
+            borderRadius: 6,
             fontWeight: 500,
+            fontSize: '0.75rem',
           },
         },
       },
       MuiAlert: {
         styleOverrides: {
           root: {
-            borderRadius: 12,
+            borderRadius: 10,
             fontWeight: 500,
+          },
+        },
+      },
+      MuiListItemButton: {
+        styleOverrides: {
+          root: {
+            borderRadius: 8,
+            marginBottom: 2,
+            '&.Mui-selected': {
+              fontWeight: 600,
+            },
           },
         },
       },
     },
   }), [darkMode]);
-
-  const handleTabChange = useCallback((event: React.SyntheticEvent, newValue: number) => {
-    setTabValue(newValue);
-  }, []);
 
   const toggleDarkMode = useCallback(() => {
     const newDarkMode = !darkMode;
@@ -256,291 +286,271 @@ function App() {
     localStorage.setItem('darkMode', JSON.stringify(newDarkMode));
   }, [darkMode]);
 
-  // Keyboard navigation
+  const handleToolSelect = useCallback((toolId: string) => {
+    setActiveToolId(toolId);
+    setMobileDrawerOpen(false);
+  }, []);
+
   const handleKeyDown = useCallback((event: React.KeyboardEvent) => {
     if (event.ctrlKey || event.metaKey) {
-      switch (event.key) {
-        case '1':
-        case '2':
-        case '3':
-        case '4':
-        case '5':
-        case '6':
-        case '7':
-        case '8':
-          event.preventDefault();
-          const tabIndex = parseInt(event.key) - 1;
-          if (tabIndex >= 0 && tabIndex < 8) {
-            setTabValue(tabIndex);
-          }
-          break;
-        case 'd':
-          event.preventDefault();
-          toggleDarkMode();
-          break;
+      const num = parseInt(event.key);
+      if (num >= 1 && num <= tools.length) {
+        event.preventDefault();
+        setActiveToolId(tools[num - 1].id);
+      }
+      if (event.key === 'd') {
+        event.preventDefault();
+        toggleDarkMode();
+      }
+      if (event.key === 'k') {
+        event.preventDefault();
+        document.getElementById('tool-search-input')?.focus();
       }
     }
-  }, [toggleDarkMode]);
+  }, [toggleDarkMode, tools]);
+
+  const drawerContent = (
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', p: 1.5 }}>
+      {/* Search */}
+      <TextField
+        id="tool-search-input"
+        size="small"
+        placeholder="Search tools..."
+        value={searchQuery}
+        onChange={(e) => setSearchQuery(e.target.value)}
+        sx={{ mb: 2 }}
+        InputProps={{
+          startAdornment: (
+            <InputAdornment position="start">
+              <Search sx={{ fontSize: 18, color: 'text.secondary' }} />
+            </InputAdornment>
+          ),
+          sx: {
+            borderRadius: 2,
+            fontSize: '0.875rem',
+            bgcolor: darkMode ? alpha('#ffffff', 0.04) : alpha('#000000', 0.03),
+          }
+        }}
+      />
+
+      {/* Tool list by category */}
+      <Box sx={{ flexGrow: 1, overflow: 'auto' }}>
+        {categories.map(cat => {
+          const catTools = filteredTools.filter(t => t.category === cat.id);
+          if (catTools.length === 0) return null;
+          return (
+            <Box key={cat.id} sx={{ mb: 2 }}>
+              <Typography
+                variant="overline"
+                sx={{
+                  px: 1.5,
+                  mb: 0.5,
+                  display: 'block',
+                  fontSize: '0.65rem',
+                  fontWeight: 700,
+                  letterSpacing: '0.1em',
+                  color: 'text.secondary',
+                }}
+              >
+                {cat.label}
+              </Typography>
+              <List dense disablePadding>
+                {catTools.map(tool => (
+                  <ListItemButton
+                    key={tool.id}
+                    selected={activeToolId === tool.id}
+                    onClick={() => handleToolSelect(tool.id)}
+                    sx={{
+                      px: 1.5,
+                      py: 0.8,
+                      gap: 1,
+                      '&.Mui-selected': {
+                        bgcolor: darkMode ? alpha(theme.palette.primary.main, 0.15) : alpha(theme.palette.primary.main, 0.08),
+                        color: 'primary.main',
+                        '& .MuiListItemIcon-root': { color: 'primary.main' },
+                        '&:hover': {
+                          bgcolor: darkMode ? alpha(theme.palette.primary.main, 0.2) : alpha(theme.palette.primary.main, 0.12),
+                        },
+                      },
+                      '&:hover': {
+                        bgcolor: darkMode ? alpha('#ffffff', 0.06) : alpha('#000000', 0.04),
+                      },
+                    }}
+                  >
+                    <ListItemIcon sx={{ minWidth: 0, color: 'text.secondary', fontSize: 20 }}>
+                      {tool.icon}
+                    </ListItemIcon>
+                    <ListItemText
+                      primary={tool.label}
+                      primaryTypographyProps={{
+                        fontSize: '0.85rem',
+                        fontWeight: activeToolId === tool.id ? 600 : 400,
+                      }}
+                    />
+                  </ListItemButton>
+                ))}
+              </List>
+            </Box>
+          );
+        })}
+      </Box>
+
+      {/* Bottom shortcuts hint */}
+      <Divider sx={{ my: 1 }} />
+      <Box sx={{ px: 1, py: 0.5 }}>
+        <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
+          {navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+1-9 switch tools &middot; {navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+K search &middot; {navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+D theme
+        </Typography>
+      </Box>
+    </Box>
+  );
 
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <Box 
-        sx={{ 
-          flexGrow: 1, 
-          minHeight: '100vh', 
-          bgcolor: 'background.default',
-          background: darkMode 
-            ? 'linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%)'
-            : 'linear-gradient(135deg, #f8f9fa 0%, #f0f2f5 100%)',
-        }}
+      <Box
+        sx={{ display: 'flex', minHeight: '100vh', bgcolor: 'background.default' }}
         onKeyDown={handleKeyDown}
         tabIndex={-1}
-        className={`json-toolkit-app ${darkMode ? 'dark-mode' : ''}`}
       >
-        <AppBar position="static" elevation={0}>
-          <Toolbar sx={{ minHeight: 72 }}>
-            <Build sx={{ mr: 2, fontSize: 28 }} />
-            <Typography 
-              variant="h5" 
-              component="div" 
-              sx={{ 
-                fontWeight: 700,
-                background: 'linear-gradient(45deg, #ffffff 30%, #e3f2fd 90%)',
-                backgroundClip: 'text',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-                letterSpacing: '-0.02em',
-                mr: 2
-              }}
-            >
-              JSON Toolkit
-            </Typography>
-            <Box 
-              component="a" 
-              href="https://github.com/yanym/One-Toolbox" 
-              target="_blank" 
-              rel="noopener noreferrer"
-              sx={{ 
-                display: 'flex',
-                alignItems: 'center',
-                textDecoration: 'none',
-                mr: 1,
-                transition: 'transform 0.2s ease',
-                '&:hover': {
-                  transform: 'scale(1.05)'
-                }
-              }}
-            >
-              <Box
-                component="img"
-                src="https://img.shields.io/github/stars/yanym/One-Toolbox?style=social"
-                alt="GitHub stars"
-                sx={{
-                  height: 20,
-                  filter: darkMode ? 'invert(1)' : 'none',
-                }}
-              />
-            </Box>
-            <Box sx={{ flexGrow: 1 }} />
-            <Tooltip 
-              title={
-                <Box>
-                  <Typography variant="body2">
-                    {darkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
-                  </Typography>
-                  <Typography variant="caption" sx={{ opacity: 0.8 }}>
-                    Ctrl/Cmd + D
-                  </Typography>
-                </Box>
-              }
-            >
-              <IconButton 
-                color="inherit" 
-                onClick={toggleDarkMode}
-                sx={{ 
-                  ml: 1,
-                  p: 1.5,
-                  borderRadius: 2,
-                  transition: 'all 0.3s ease',
-                  '&:hover': {
-                    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-                    transform: 'rotate(180deg)',
-                  }
-                }}
-              >
-                <Fade in={darkMode} timeout={300}>
-                  <LightMode sx={{ position: 'absolute' }} />
-                </Fade>
-                <Fade in={!darkMode} timeout={300}>
-                  <DarkMode sx={{ position: 'absolute' }} />
-                </Fade>
-              </IconButton>
-            </Tooltip>
-          </Toolbar>
-        </AppBar>
-
-        <Container maxWidth="xl" sx={{ mt: 4, mb: 4, px: { xs: 2, sm: 3 } }}>
-          <Paper 
-            elevation={0} 
-            sx={{ 
-              bgcolor: 'background.paper',
-              borderRadius: 3,
-              overflow: 'hidden',
-              border: `1px solid ${darkMode ? '#333' : '#e0e0e0'}`,
-              background: darkMode
-                ? 'linear-gradient(145deg, #1a1a1a 0%, #2d2d2d 100%)'
-                : 'linear-gradient(145deg, #ffffff 0%, #f5f7fa 100%)',
+        {/* Sidebar — permanent on desktop, drawer on mobile */}
+        {isMobile ? (
+          <Drawer
+            variant="temporary"
+            open={mobileDrawerOpen}
+            onClose={() => setMobileDrawerOpen(false)}
+            ModalProps={{ keepMounted: true }}
+            sx={{
+              '& .MuiDrawer-paper': {
+                width: DRAWER_WIDTH,
+                bgcolor: 'background.paper',
+                borderRight: `1px solid`,
+                borderColor: 'divider',
+              },
             }}
           >
-            <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
-              <Tabs
-                value={tabValue}
-                onChange={handleTabChange}
-                aria-label="JSON toolkit tabs (Use Ctrl/Cmd + 1-8 for quick navigation)"
-                variant="scrollable"
-                scrollButtons="auto"
-                allowScrollButtonsMobile
-                sx={{ 
-                  px: 2,
-                  '& .MuiTabs-indicator': {
-                    height: 3,
-                    borderRadius: '3px 3px 0 0',
-                    background: darkMode
-                      ? 'linear-gradient(90deg, #90caf9 0%, #64b5f6 100%)'
-                      : 'linear-gradient(90deg, #1976d2 0%, #1565c0 100%)',
-                  },
-                  '& .MuiTabs-scrollButtons': {
-                    '&.Mui-disabled': {
-                      opacity: 0.3,
-                    },
-                  },
-                }}
-              >
-                <Tab
-                  icon={<Code />}
-                  label="JSON Formatter"
-                  {...a11yProps(0)}
-                  iconPosition="start"
-                />
-                <Tab
-                  icon={<Transform />}
-                  label="JSON Serializer"
-                  {...a11yProps(1)}
-                  iconPosition="start"
-                />
-                <Tab
-                  icon={<CompareArrows />}
-                  label="JSON Diff"
-                  {...a11yProps(2)}
-                  iconPosition="start"
-                />
-                <Tab
-                  icon={<Visibility />}
-                  label="JSON Viewer"
-                  {...a11yProps(3)}
-                  iconPosition="start"
-                />
-                <Tab
-                  icon={<TextFields />}
-                  label="String Escape"
-                  {...a11yProps(4)}
-                  iconPosition="start"
-                />
-                <Tab
-                  icon={<DataObject />}
-                  label="XML Formatter"
-                  {...a11yProps(5)}
-                  iconPosition="start"
-                />
-                <Tab
-                  icon={<Security />}
-                  label="Base64 Converter"
-                  {...a11yProps(6)}
-                  iconPosition="start"
-                />
-                <Tab
-                  icon={<Storage />}
-                  label="Protobuf Converter"
-                  {...a11yProps(7)}
-                  iconPosition="start"
-                />
-              </Tabs>
+            {/* Mobile drawer header */}
+            <Box sx={{ p: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Build sx={{ fontSize: 22, color: 'primary.main' }} />
+              <Typography variant="h6" sx={{ fontWeight: 700, fontSize: '1.05rem' }}>
+                One Toolbox
+              </Typography>
             </Box>
-
-            <Fade in={true} timeout={300}>
-              <Box>
-                <TabPanel value={tabValue} index={0}>
-                  <JsonValidator />
-                </TabPanel>
-                <TabPanel value={tabValue} index={1}>
-                  <JsonSerializer />
-                </TabPanel>
-                <TabPanel value={tabValue} index={2}>
-                  <JsonDiff />
-                </TabPanel>
-                <TabPanel value={tabValue} index={3}>
-                  <JsonViewer />
-                </TabPanel>
-                <TabPanel value={tabValue} index={4}>
-                  <StringEscape />
-                </TabPanel>
-                <TabPanel value={tabValue} index={5}>
-                  <XmlFormatter />
-                </TabPanel>
-                <TabPanel value={tabValue} index={6}>
-                  <Base64Converter />
-                </TabPanel>
-                <TabPanel value={tabValue} index={7}>
-                  <ProtobufConverter />
-                </TabPanel>
-              </Box>
-            </Fade>
-          </Paper>
-        </Container>
-
-        {/* Keyboard shortcuts help */}
-        <Box
-          sx={{
-            position: 'fixed',
-            bottom: 16,
-            left: 16,
-            zIndex: 1000,
-            opacity: 0.7,
-            transition: 'opacity 0.3s ease',
-            '&:hover': { opacity: 1 },
-          }}
-        >
-          <Tooltip
-            title={
-              <Box sx={{ p: 1 }}>
-                <Typography variant="subtitle2" gutterBottom>
-                  Keyboard Shortcuts
-                </Typography>
-                <Typography variant="caption" component="div">
-                  Ctrl/Cmd + 1-8: Switch tabs
-                </Typography>
-                <Typography variant="caption" component="div">
-                  Ctrl/Cmd + D: Toggle theme
-                </Typography>
-              </Box>
-            }
-            placement="top-start"
+            <Divider />
+            {drawerContent}
+          </Drawer>
+        ) : (
+          <Box
+            sx={{
+              width: DRAWER_WIDTH,
+              flexShrink: 0,
+              borderRight: `1px solid`,
+              borderColor: 'divider',
+              bgcolor: 'background.paper',
+              display: 'flex',
+              flexDirection: 'column',
+            }}
           >
-            <Paper
+            {/* Desktop sidebar header */}
+            <Box sx={{ p: 2, display: 'flex', alignItems: 'center', gap: 1.5 }}>
+              <Build sx={{ fontSize: 22, color: 'primary.main' }} />
+              <Typography variant="h6" sx={{ fontWeight: 700, fontSize: '1.05rem' }}>
+                One Toolbox
+              </Typography>
+              <Box sx={{ flexGrow: 1 }} />
+              <Tooltip title={darkMode ? 'Light mode' : 'Dark mode'}>
+                <IconButton size="small" onClick={toggleDarkMode} sx={{ color: 'text.secondary' }}>
+                  {darkMode ? <LightMode fontSize="small" /> : <DarkMode fontSize="small" />}
+                </IconButton>
+              </Tooltip>
+            </Box>
+            <Divider />
+            {drawerContent}
+          </Box>
+        )}
+
+        {/* Main content */}
+        <Box sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+          {/* Top bar (mobile only shows hamburger + tool name) */}
+          {isMobile && (
+            <AppBar
+              position="sticky"
+              elevation={0}
               sx={{
-                p: 1,
                 bgcolor: 'background.paper',
-                border: `1px solid ${darkMode ? '#333' : '#e0e0e0'}`,
-                borderRadius: 2,
-                cursor: 'help',
+                borderBottom: `1px solid`,
+                borderColor: 'divider',
+                color: 'text.primary',
               }}
             >
-              <Typography variant="caption" sx={{ opacity: 0.8 }}>
-                ⌨️ Shortcuts
-              </Typography>
-            </Paper>
-          </Tooltip>
+              <Toolbar sx={{ minHeight: 56 }}>
+                <IconButton
+                  edge="start"
+                  onClick={() => setMobileDrawerOpen(true)}
+                  sx={{ mr: 1.5 }}
+                >
+                  <MenuIcon />
+                </IconButton>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  {activeTool.icon}
+                  <Typography variant="h6" sx={{ fontSize: '1rem' }}>
+                    {activeTool.label}
+                  </Typography>
+                </Box>
+                <Box sx={{ flexGrow: 1 }} />
+                <Tooltip title={darkMode ? 'Light mode' : 'Dark mode'}>
+                  <IconButton size="small" onClick={toggleDarkMode}>
+                    {darkMode ? <LightMode fontSize="small" /> : <DarkMode fontSize="small" />}
+                  </IconButton>
+                </Tooltip>
+              </Toolbar>
+            </AppBar>
+          )}
+
+          {/* Tool header (desktop) */}
+          {!isMobile && (
+            <Box sx={{
+              px: 4,
+              pt: 3,
+              pb: 1,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 1.5,
+            }}>
+              <Box sx={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 36,
+                height: 36,
+                borderRadius: 2,
+                bgcolor: darkMode ? alpha(theme.palette.primary.main, 0.12) : alpha(theme.palette.primary.main, 0.08),
+                color: 'primary.main',
+              }}>
+                {activeTool.icon}
+              </Box>
+              <Box>
+                <Typography variant="h5" sx={{ fontSize: '1.25rem', lineHeight: 1.3 }}>
+                  {activeTool.label}
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.8rem' }}>
+                  {activeTool.description}
+                </Typography>
+              </Box>
+            </Box>
+          )}
+
+          {/* Tool content */}
+          <Box sx={{
+            flexGrow: 1,
+            p: isMobile ? 2 : 3,
+            px: isMobile ? 2 : 4,
+            overflow: 'auto',
+          }}>
+            <Fade in={true} timeout={200} key={activeToolId}>
+              <Box>{activeTool.component}</Box>
+            </Fade>
+          </Box>
         </Box>
       </Box>
     </ThemeProvider>
