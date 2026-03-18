@@ -34,8 +34,11 @@ function parseAny(raw: string): ParsedTime {
   const s = raw.trim();
   if (!s) throw new Error('Empty input');
 
-  if (/^-?\d+(\.\d+)?$/.test(s)) {
-    const n = parseFloat(s);
+  // Strip commas, spaces, and underscores from numeric-looking input
+  const sanitized = s.replace(/[,\s_]/g, '');
+
+  if (/^-?\d+(\.\d+)?$/.test(sanitized)) {
+    const n = parseFloat(sanitized);
     const abs = Math.abs(n);
     if (abs < 1e10)  return { ms: Math.round(n * 1000),       inputFormat: 'Unix seconds' };
     if (abs < 1e13)  return { ms: Math.round(n),              inputFormat: 'Unix milliseconds' };
