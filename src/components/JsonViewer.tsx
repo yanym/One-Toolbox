@@ -19,7 +19,8 @@ import {
   TableCell,
   TableContainer,
   TableHead,
-  TableRow
+  TableRow,
+  useTheme
 } from '@mui/material';
 import GridWrapper from './GridWrapper';
 import {
@@ -42,6 +43,8 @@ interface JsonNode {
 }
 
 const JsonViewer: React.FC = () => {
+  const theme = useTheme();
+  const darkMode = theme.palette.mode === 'dark';
   const [jsonInput, setJsonInput] = useState('{\n  "user": {\n    "id": 123,\n    "name": "John Doe",\n    "email": "john@example.com",\n    "active": true,\n    "profile": {\n      "age": 30,\n      "city": "New York",\n      "hobbies": ["reading", "coding", "traveling"],\n      "preferences": {\n        "theme": "dark",\n        "notifications": true,\n        "language": "en"\n      }\n    },\n    "orders": [\n      {\n        "id": "order-1",\n        "date": "2024-01-15",\n        "total": 99.99,\n        "items": ["laptop", "mouse"]\n      },\n      {\n        "id": "order-2",\n        "date": "2024-02-20",\n        "total": 49.99,\n        "items": ["book"]\n      }\n    ]\n  }\n}');
   const [parsedJson, setParsedJson] = useState<any>(null);
   const [error, setError] = useState('');
@@ -242,7 +245,8 @@ const JsonViewer: React.FC = () => {
           sx={{
             ml: node.level * 2,
             py: 0.5,
-            borderLeft: node.level > 0 ? '1px solid #ddd' : 'none',
+            borderLeft: node.level > 0 ? '1px solid' : 'none',
+            borderColor: node.level > 0 ? 'divider' : undefined,
             pl: node.level > 0 ? 2 : 0
           }}
         >
@@ -265,7 +269,7 @@ const JsonViewer: React.FC = () => {
             
             <Typography
               variant="body2"
-              sx={{ fontWeight: 500, color: '#333' }}
+              sx={{ fontWeight: 500, color: 'text.primary' }}
             >
               {node.key}:
             </Typography>
@@ -411,7 +415,7 @@ const JsonViewer: React.FC = () => {
         JSON Viewer & Explorer
       </Typography>
 
-      <GridWrapper container spacing={3}>
+      <GridWrapper container spacing={2}>
         <GridWrapper item xs={12} md={6}>
           <Paper elevation={1} sx={{ p: 2, height: '600px', display: 'flex', flexDirection: 'column' }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
@@ -436,7 +440,7 @@ const JsonViewer: React.FC = () => {
                 defaultLanguage="json"
                 value={jsonInput}
                 onChange={(value) => setJsonInput(value || '')}
-                theme="vs-dark"
+                theme={darkMode ? 'vs-dark' : 'light'}
                 options={{
                   minimap: { enabled: false },
                   scrollBeyondLastLine: false,

@@ -267,7 +267,7 @@ const JsonValidator: React.FC = () => {
       </Box>
 
 
-      <GridWrapper container spacing={3}>
+      <GridWrapper container spacing={2}>
         <GridWrapper item xs={12} md={8}>
           <Paper 
             elevation={1} 

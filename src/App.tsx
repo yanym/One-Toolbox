@@ -510,7 +510,7 @@ function App() {
           {/* Tool header (desktop) */}
           {!isMobile && (
             <Box sx={{
-              px: 4,
+              px: 3,
               pt: 3,
               pb: 1,
               display: 'flex',
@@ -543,8 +543,8 @@ function App() {
           {/* Tool content */}
           <Box sx={{
             flexGrow: 1,
-            p: isMobile ? 2 : 3,
-            px: isMobile ? 2 : 4,
+            p: isMobile ? 2 : 2.5,
+            px: isMobile ? 2 : 3,
             overflow: 'auto',
           }}>
             <Fade in={true} timeout={200} key={activeToolId}>

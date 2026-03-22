@@ -15,7 +15,8 @@ import {
   Tabs,
   Tab,
   FormControlLabel,
-  Switch
+  Switch,
+  useTheme
 } from '@mui/material';
 import GridWrapper from './GridWrapper';
 import {
@@ -50,6 +51,8 @@ function TabPanel(props: TabPanelProps) {
 }
 
 const StringEscape: React.FC = () => {
+  const theme = useTheme();
+  const darkMode = theme.palette.mode === 'dark';
   const [tabValue, setTabValue] = useState(0);
   const [input, setInput] = useState('Hello "World"\nThis is a test string with special characters: \t\r\n\\backslash and /forward slash');
   const [output, setOutput] = useState('');
@@ -297,7 +300,7 @@ const StringEscape: React.FC = () => {
       </Box>
 
       <TabPanel value={tabValue} index={0}>
-        <GridWrapper container spacing={3}>
+        <GridWrapper container spacing={2}>
           <GridWrapper item xs={12} md={6}>
             <Paper elevation={1} sx={{ p: 2, height: '600px', display: 'flex', flexDirection: 'column' }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
@@ -322,7 +325,7 @@ const StringEscape: React.FC = () => {
                   defaultLanguage="text"
                   value={input}
                   onChange={(value) => setInput(value || '')}
-                  theme="vs-dark"
+                  theme={darkMode ? 'vs-dark' : 'light'}
                   options={{
                     minimap: { enabled: false },
                     scrollBeyondLastLine: false,
@@ -395,7 +398,7 @@ const StringEscape: React.FC = () => {
                   height="100%"
                   defaultLanguage="text"
                   value={output}
-                  theme="vs-dark"
+                  theme={darkMode ? 'vs-dark' : 'light'}
                   options={{
                     minimap: { enabled: false },
                     scrollBeyondLastLine: false,
@@ -412,7 +415,7 @@ const StringEscape: React.FC = () => {
       </TabPanel>
 
       <TabPanel value={tabValue} index={1}>
-        <GridWrapper container spacing={3}>
+        <GridWrapper container spacing={2}>
           <GridWrapper item xs={12} md={6}>
             <Paper elevation={1} sx={{ p: 2, height: '600px', display: 'flex', flexDirection: 'column' }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
@@ -450,7 +453,7 @@ const StringEscape: React.FC = () => {
                   defaultLanguage="text"
                   value={input}
                   onChange={(value) => setInput(value || '')}
-                  theme="vs-dark"
+                  theme={darkMode ? 'vs-dark' : 'light'}
                   options={{
                     minimap: { enabled: false },
                     scrollBeyondLastLine: false,
@@ -505,7 +508,7 @@ const StringEscape: React.FC = () => {
                   height="100%"
                   defaultLanguage="text"
                   value={output}
-                  theme="vs-dark"
+                  theme={darkMode ? 'vs-dark' : 'light'}
                   options={{
                     minimap: { enabled: false },
                     scrollBeyondLastLine: false,
@@ -522,7 +525,7 @@ const StringEscape: React.FC = () => {
       </TabPanel>
 
       <TabPanel value={tabValue} index={2}>
-        <GridWrapper container spacing={3}>
+        <GridWrapper container spacing={2}>
           <GridWrapper item xs={12} md={6}>
             <Paper elevation={1} sx={{ p: 2, height: '600px', display: 'flex', flexDirection: 'column' }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
@@ -547,7 +550,7 @@ const StringEscape: React.FC = () => {
                   defaultLanguage="text"
                   value={input}
                   onChange={(value) => setInput(value || '')}
-                  theme="vs-dark"
+                  theme={darkMode ? 'vs-dark' : 'light'}
                   options={{
                     minimap: { enabled: false },
                     scrollBeyondLastLine: false,
@@ -592,7 +595,7 @@ const StringEscape: React.FC = () => {
                   height="100%"
                   defaultLanguage="text"
                   value={output}
-                  theme="vs-dark"
+                  theme={darkMode ? 'vs-dark' : 'light'}
                   options={{
                     minimap: { enabled: false },
                     scrollBeyondLastLine: false,

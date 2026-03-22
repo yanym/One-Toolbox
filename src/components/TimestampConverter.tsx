@@ -21,7 +21,7 @@ interface ParsedTime {
   inputFormat: string;
 }
 
-type FormatKey = 'unix_s' | 'unix_ms' | 'unix_us' | 'unix_ns' | 'iso8601' | 'utc' | 'tz_pt' | 'tz_ct' | 'tz_et' | 'relative';
+type FormatKey = 'unix_s' | 'unix_ms' | 'iso8601' | 'utc' | 'tz_pt' | 'tz_ct' | 'tz_et' | 'relative';
 
 interface OutputRow {
   key: FormatKey;
@@ -96,8 +96,6 @@ function buildRows(ms: number): OutputRow[] {
   return [
     { key: 'unix_s',   label: 'Unix (seconds)',      description: 'Standard Unix timestamp',      value: String(Math.floor(ms / 1000)) },
     { key: 'unix_ms',  label: 'Unix (milliseconds)', description: 'JavaScript Date.now() / Java', value: String(ms) },
-    { key: 'unix_us',  label: 'Unix (microseconds)', description: 'Python time.time_ns() / Go',   value: String(ms * 1000) },
-    { key: 'unix_ns',  label: 'Unix (nanoseconds)',  description: 'Rust / C++ / high-resolution', value: String(ms * 1_000_000) },
     { key: 'iso8601',  label: 'ISO 8601',            description: 'Standard interchange format',  value: d.toISOString() },
     { key: 'utc',      label: 'UTC',                 description: 'Coordinated Universal Time',   value: d.toUTCString() },
     { key: 'tz_pt',    label: 'Pacific Time',        description: 'America/Los_Angeles (PT)',      value: formatTz(ms, 'America/Los_Angeles') },
@@ -273,8 +271,6 @@ const TimestampConverter: React.FC = () => {
           {[
             '1700000000',
             '1700000000000',
-            '1700000000000000',
-            '1700000000000000000',
             '2024-01-15T10:30:00Z',
             '2024-01-15',
             'Jan 15 2024 10:30:00',

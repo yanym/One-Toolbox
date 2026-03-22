@@ -12,7 +12,8 @@ import {
   FormControl,
   InputLabel,
   Select,
-  MenuItem
+  MenuItem,
+  useTheme
 } from '@mui/material';
 import GridWrapper from './GridWrapper';
 import {
@@ -26,6 +27,8 @@ import {
 import Editor from '@monaco-editor/react';
 
 const XmlFormatter: React.FC = () => {
+  const theme = useTheme();
+  const darkMode = theme.palette.mode === 'dark';
   const [xmlInput, setXmlInput] = useState('<?xml version="1.0" encoding="UTF-8"?>\n<root>\n  <person>\n    <name>John Doe</name>\n    <age>30</age>\n    <city>New York</city>\n  </person>\n</root>');
   const [validationResult, setValidationResult] = useState<{
     isValid: boolean;
@@ -184,7 +187,7 @@ const XmlFormatter: React.FC = () => {
         XML Formatter & Validator
       </Typography>
 
-      <GridWrapper container spacing={3}>
+      <GridWrapper container spacing={2}>
         <GridWrapper item xs={12} md={8}>
           <Paper elevation={1} sx={{ p: 2, height: '600px', display: 'flex', flexDirection: 'column' }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
@@ -239,7 +242,7 @@ const XmlFormatter: React.FC = () => {
                 defaultLanguage="xml"
                 value={xmlInput}
                 onChange={handleInputChange}
-                theme="vs-dark"
+                theme={darkMode ? 'vs-dark' : 'light'}
                 options={{
                   minimap: { enabled: false },
                   scrollBeyondLastLine: false,

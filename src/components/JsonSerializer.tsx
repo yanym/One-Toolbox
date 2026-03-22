@@ -13,7 +13,8 @@ import {
   Select,
   MenuItem,
   Tabs,
-  Tab
+  Tab,
+  useTheme
 } from '@mui/material';
 import GridWrapper from './GridWrapper';
 import {
@@ -47,6 +48,8 @@ function TabPanel(props: TabPanelProps) {
 }
 
 const JsonSerializer: React.FC = () => {
+  const theme = useTheme();
+  const darkMode = theme.palette.mode === 'dark';
   const [tabValue, setTabValue] = useState(0);
   const [jsonInput, setJsonInput] = useState('{\n  "name": "John Doe",\n  "age": 30,\n  "active": true,\n  "hobbies": ["reading", "coding"]\n}');
   const [output, setOutput] = useState('');
@@ -224,7 +227,7 @@ func main() {
       </Box>
 
       <TabPanel value={tabValue} index={0}>
-        <GridWrapper container spacing={3}>
+        <GridWrapper container spacing={2}>
           <GridWrapper item xs={12} md={6}>
             <Paper elevation={1} sx={{ p: 2, height: '600px', display: 'flex', flexDirection: 'column' }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
@@ -249,7 +252,7 @@ func main() {
                   defaultLanguage="json"
                   value={jsonInput}
                   onChange={(value) => setJsonInput(value || '')}
-                  theme="vs-dark"
+                  theme={darkMode ? 'vs-dark' : 'light'}
                   options={{
                     minimap: { enabled: false },
                     scrollBeyondLastLine: false,
@@ -308,7 +311,7 @@ func main() {
                   height="100%"
                   defaultLanguage={outputFormat === 'csharp' ? 'csharp' : outputFormat}
                   value={output}
-                  theme="vs-dark"
+                  theme={darkMode ? 'vs-dark' : 'light'}
                   options={{
                     minimap: { enabled: false },
                     scrollBeyondLastLine: false,
@@ -325,7 +328,7 @@ func main() {
       </TabPanel>
 
       <TabPanel value={tabValue} index={1}>
-        <GridWrapper container spacing={3}>
+        <GridWrapper container spacing={2}>
           <GridWrapper item xs={12} md={6}>
             <Paper elevation={1} sx={{ p: 2, height: '600px', display: 'flex', flexDirection: 'column' }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
@@ -356,7 +359,7 @@ func main() {
                   defaultLanguage={outputFormat}
                   value={jsonInput}
                   onChange={(value) => setJsonInput(value || '')}
-                  theme="vs-dark"
+                  theme={darkMode ? 'vs-dark' : 'light'}
                   options={{
                     minimap: { enabled: false },
                     scrollBeyondLastLine: false,
@@ -400,7 +403,7 @@ func main() {
                   height="100%"
                   defaultLanguage="json"
                   value={output}
-                  theme="vs-dark"
+                  theme={darkMode ? 'vs-dark' : 'light'}
                   options={{
                     minimap: { enabled: false },
                     scrollBeyondLastLine: false,

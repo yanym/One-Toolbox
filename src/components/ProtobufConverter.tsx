@@ -18,7 +18,8 @@ import {
   InputLabel,
   Select,
   MenuItem,
-  SelectChangeEvent
+  SelectChangeEvent,
+  useTheme
 } from '@mui/material';
 import GridWrapper from './GridWrapper';
 import {
@@ -49,6 +50,8 @@ interface ProtoMessage {
 }
 
 const ProtobufConverter: React.FC = () => {
+  const theme = useTheme();
+  const darkMode = theme.palette.mode === 'dark';
   const [inputText, setInputText] = useState('');
   const [outputText, setOutputText] = useState('');
   const [protoSchema, setProtoSchema] = useState(`syntax = "proto3";
@@ -428,7 +431,7 @@ message AddressBook {
                   defaultLanguage="protobuf"
                   value={protoSchema}
                   onChange={handleSchemaChange}
-                  theme="vs-dark"
+                  theme={darkMode ? 'vs-dark' : 'light'}
                   options={{
                     minimap: { enabled: false },
                     scrollBeyondLastLine: false,
@@ -459,7 +462,7 @@ message AddressBook {
         </Accordion>
       </Paper>
 
-      <GridWrapper container spacing={3}>
+      <GridWrapper container spacing={2}>
         <GridWrapper item xs={12} md={6}>
           <Paper elevation={1} sx={{ p: 2, height: '600px', display: 'flex', flexDirection: 'column' }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
@@ -496,7 +499,7 @@ message AddressBook {
                 defaultLanguage={mode === 'encode' ? 'json' : 'text'}
                 value={inputText}
                 onChange={handleInputChange}
-                theme="vs-dark"
+                theme={darkMode ? 'vs-dark' : 'light'}
                 options={{
                   minimap: { enabled: false },
                   scrollBeyondLastLine: false,
@@ -517,8 +520,8 @@ message AddressBook {
               </Typography>
               <Stack direction="row" spacing={1}>
                 <Tooltip title="Copy to Clipboard">
-                  <IconButton 
-                    onClick={() => copyToClipboard(outputText)} 
+                  <IconButton
+                    onClick={() => copyToClipboard(outputText)}
                     color="primary"
                     disabled={!outputText}
                   >
@@ -527,13 +530,13 @@ message AddressBook {
                 </Tooltip>
               </Stack>
             </Box>
-            
+
             <Box sx={{ flexGrow: 1, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
               <Editor
                 height="100%"
                 defaultLanguage={mode === 'encode' ? 'text' : 'json'}
                 value={outputText}
-                theme="vs-dark"
+                theme={darkMode ? 'vs-dark' : 'light'}
                 options={{
                   readOnly: true,
                   minimap: { enabled: false },
