@@ -39,6 +39,9 @@ import {
   Build,
   Link,
   Schedule,
+  FindInPage,
+  Difference,
+  Palette,
 } from '@mui/icons-material';
 import './App.css';
 import JsonValidator from './components/JsonValidator';
@@ -51,13 +54,16 @@ import Base64Converter from './components/Base64Converter';
 import ProtobufConverter from './components/ProtobufConverter';
 import UrlEncoderDecoder from './components/UrlEncoderDecoder';
 import TimestampConverter from './components/TimestampConverter';
+import RegexTester from './components/RegexTester';
+import TextDiff from './components/TextDiff';
+import ColorConverter from './components/ColorConverter';
 
 interface ToolConfig {
   id: string;
   label: string;
   shortLabel: string;
   icon: React.ReactElement;
-  category: 'json' | 'text' | 'encoding';
+  category: 'json' | 'text' | 'encoding' | 'web';
   description: string;
   component: React.ReactNode;
 }
@@ -167,12 +173,40 @@ function App() {
       description: 'Convert Unix timestamps across all formats',
       component: <TimestampConverter />,
     },
+    {
+      id: 'regex-tester',
+      label: 'Regex Tester',
+      shortLabel: 'Regex',
+      icon: <FindInPage />,
+      category: 'text',
+      description: 'Test regular expressions with live match highlighting',
+      component: <RegexTester />,
+    },
+    {
+      id: 'text-diff',
+      label: 'Text Diff',
+      shortLabel: 'Diff',
+      icon: <Difference />,
+      category: 'text',
+      description: 'Side-by-side or inline diff for any text',
+      component: <TextDiff />,
+    },
+    {
+      id: 'color-converter',
+      label: 'Color Converter',
+      shortLabel: 'Color',
+      icon: <Palette />,
+      category: 'web',
+      description: 'Convert hex/RGB/HSL and check WCAG contrast',
+      component: <ColorConverter />,
+    },
   ], []);
 
   const categories = [
     { id: 'json', label: 'JSON Tools' },
     { id: 'text', label: 'Text & Markup' },
     { id: 'encoding', label: 'Encoding' },
+    { id: 'web', label: 'Web & Design' },
   ] as const;
 
   const filteredTools = useMemo(() => {

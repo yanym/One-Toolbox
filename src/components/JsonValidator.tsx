@@ -17,6 +17,8 @@ import {
   Snackbar,
   Fade,
   Collapse,
+  ToggleButton,
+  ToggleButtonGroup,
   useTheme
 } from '@mui/material';
 import GridWrapper from './GridWrapper';
@@ -30,11 +32,125 @@ import {
   Download,
   Upload,
   Info,
-  Warning
+  Warning,
+  Code as CodeIcon,
+  AccountTree,
+  ExpandMore,
+  ChevronRight
 } from '@mui/icons-material';
 import Editor from '@monaco-editor/react';
 // @ts-ignore
 import jsonlint from 'jsonlint-mod';
+
+const typeColor = (type: string, darkMode: boolean): string => {
+  switch (type) {
+    case 'string': return darkMode ? '#a5d6a7' : '#2e7d32';
+    case 'number': return darkMode ? '#90caf9' : '#1565c0';
+    case 'boolean': return darkMode ? '#ffb74d' : '#e65100';
+    case 'null': return darkMode ? '#9e9e9e' : '#616161';
+    default: return darkMode ? '#e6edf3' : '#1f2328';
+  }
+};
+
+const getType = (v: any): string => {
+  if (v === null) return 'null';
+  if (Array.isArray(v)) return 'array';
+  return typeof v;
+};
+
+const formatPrimitive = (v: any, type: string): string => {
+  if (type === 'string') return `"${v}"`;
+  if (type === 'null') return 'null';
+  return String(v);
+};
+
+interface TreeNodeProps {
+  name: string | number | null;
+  value: any;
+  isLast: boolean;
+  initiallyOpen?: boolean;
+  darkMode: boolean;
+  isRoot?: boolean;
+}
+
+const TreeNode: React.FC<TreeNodeProps> = ({ name, value, isLast, initiallyOpen = false, darkMode, isRoot = false }) => {
+  const [open, setOpen] = useState(initiallyOpen);
+  const type = getType(value);
+  const isContainer = type === 'object' || type === 'array';
+  const entries = isContainer
+    ? (type === 'array' ? (value as any[]).map((v, i) => [i, v] as [number, any]) : Object.entries(value as object))
+    : [];
+  const count = entries.length;
+
+  const keyLabel = name === null ? null : (
+    <Typography component="span" sx={{ fontFamily: 'monospace', fontSize: '0.85rem', color: darkMode ? '#d2a8ff' : '#6f42c1', mr: 0.5 }}>
+      {typeof name === 'number' ? `${name}` : `"${name}"`}
+      <Typography component="span" sx={{ color: 'text.secondary' }}>: </Typography>
+    </Typography>
+  );
+
+  if (!isContainer) {
+    return (
+      <Box sx={{ display: 'flex', alignItems: 'center', pl: 3, py: 0.1 }}>
+        {keyLabel}
+        <Typography component="span" sx={{ fontFamily: 'monospace', fontSize: '0.85rem', color: typeColor(type, darkMode) }}>
+          {formatPrimitive(value, type)}
+        </Typography>
+        {!isLast && <Typography component="span" sx={{ color: 'text.secondary', fontFamily: 'monospace' }}>,</Typography>}
+      </Box>
+    );
+  }
+
+  const bracketOpen = type === 'array' ? '[' : '{';
+  const bracketClose = type === 'array' ? ']' : '}';
+
+  return (
+    <Box>
+      <Box
+        sx={{ display: 'flex', alignItems: 'center', py: 0.1, cursor: 'pointer', userSelect: 'none', '&:hover': { bgcolor: 'action.hover' } }}
+        onClick={() => setOpen(o => !o)}
+      >
+        <IconButton size="small" sx={{ p: 0.25, mr: 0.25 }}>
+          {open ? <ExpandMore fontSize="inherit" /> : <ChevronRight fontSize="inherit" />}
+        </IconButton>
+        {keyLabel}
+        <Typography component="span" sx={{ fontFamily: 'monospace', fontSize: '0.85rem', color: 'text.secondary' }}>
+          {bracketOpen}
+          {!open && (
+            <>
+              <Typography component="span" sx={{ color: 'text.disabled', fontStyle: 'italic', mx: 0.5 }}>
+                {count} {type === 'array' ? (count === 1 ? 'item' : 'items') : (count === 1 ? 'key' : 'keys')}
+              </Typography>
+              {bracketClose}
+              {!isLast && !isRoot && ','}
+            </>
+          )}
+        </Typography>
+      </Box>
+      {open && (
+        <>
+          <Box sx={{ borderLeft: '1px dashed', borderColor: 'divider', ml: '14px' }}>
+            {entries.map(([k, v], i) => (
+              <TreeNode
+                key={String(k)}
+                name={type === 'array' ? (k as number) : (k as string)}
+                value={v}
+                isLast={i === entries.length - 1}
+                initiallyOpen={false}
+                darkMode={darkMode}
+              />
+            ))}
+          </Box>
+          <Box sx={{ display: 'flex', alignItems: 'center', pl: '32px' }}>
+            <Typography component="span" sx={{ fontFamily: 'monospace', fontSize: '0.85rem', color: 'text.secondary' }}>
+              {bracketClose}{!isLast && !isRoot ? ',' : ''}
+            </Typography>
+          </Box>
+        </>
+      )}
+    </Box>
+  );
+};
 
 const JsonValidator: React.FC = () => {
   const theme = useTheme();
@@ -48,6 +164,7 @@ const JsonValidator: React.FC = () => {
   }>({ isValid: true });
   const [indentSize, setIndentSize] = useState(2);
   const [isValidating, setIsValidating] = useState(false);
+  const [viewMode, setViewMode] = useState<'editor' | 'tree'>('editor');
   const [snackbar, setSnackbar] = useState<{
     open: boolean;
     message: string;
@@ -291,7 +408,21 @@ const JsonValidator: React.FC = () => {
                   <Error color="error" fontSize="small" />
                 )}
               </Typography>
-              <Stack direction="row" spacing={1} flexWrap="wrap">
+              <Stack direction="row" spacing={1} flexWrap="wrap" alignItems="center">
+                <ToggleButtonGroup
+                  size="small"
+                  exclusive
+                  value={viewMode}
+                  onChange={(_, v) => { if (v) setViewMode(v); }}
+                  sx={{ mr: 0.5 }}
+                >
+                  <ToggleButton value="editor" sx={{ px: 1.2, py: 0.4, textTransform: 'none' }}>
+                    <CodeIcon fontSize="small" sx={{ mr: 0.5 }} /> Editor
+                  </ToggleButton>
+                  <ToggleButton value="tree" sx={{ px: 1.2, py: 0.4, textTransform: 'none' }}>
+                    <AccountTree fontSize="small" sx={{ mr: 0.5 }} /> Tree
+                  </ToggleButton>
+                </ToggleButtonGroup>
                 <FormControl size="small" sx={{ minWidth: 120 }}>
                   <InputLabel>Indent</InputLabel>
                   <Select
@@ -343,7 +474,7 @@ const JsonValidator: React.FC = () => {
               </Stack>
             </Box>
             
-            <Box sx={{ flexGrow: 1, border: '1px solid', borderColor: 'divider', borderRadius: 1, overflow: 'hidden' }}>
+            <Box sx={{ flexGrow: 1, border: '1px solid', borderColor: 'divider', borderRadius: 1, overflow: 'hidden', display: viewMode === 'editor' ? 'block' : 'none' }}>
               <Editor
                 height="100%"
                 defaultLanguage="json"
@@ -369,6 +500,37 @@ const JsonValidator: React.FC = () => {
                 }}
               />
             </Box>
+            {viewMode === 'tree' && (
+              <Box sx={{ flexGrow: 1, border: '1px solid', borderColor: 'divider', borderRadius: 1, overflow: 'auto', p: 1.5, bgcolor: 'background.default' }}>
+                {validationResult.isValid && jsonInput.trim() ? (
+                  (() => {
+                    try {
+                      const parsed = JSON.parse(jsonInput);
+                      return (
+                        <TreeNode
+                          name={null}
+                          value={parsed}
+                          isLast
+                          initiallyOpen
+                          darkMode={theme.palette.mode === 'dark'}
+                          isRoot
+                        />
+                      );
+                    } catch {
+                      return (
+                        <Typography variant="body2" color="text.secondary">
+                          Invalid JSON — switch to Editor to fix errors.
+                        </Typography>
+                      );
+                    }
+                  })()
+                ) : (
+                  <Typography variant="body2" color="text.secondary">
+                    {jsonInput.trim() ? 'Invalid JSON — switch to Editor to fix errors.' : 'Enter JSON in the Editor to see the tree.'}
+                  </Typography>
+                )}
+              </Box>
+            )}
           </Paper>
         </GridWrapper>
 
