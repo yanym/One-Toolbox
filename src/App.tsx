@@ -42,6 +42,7 @@ import {
   FindInPage,
   Difference,
   Palette,
+  Key,
 } from '@mui/icons-material';
 import './App.css';
 import JsonValidator from './components/JsonValidator';
@@ -57,13 +58,14 @@ import TimestampConverter from './components/TimestampConverter';
 import RegexTester from './components/RegexTester';
 import TextDiff from './components/TextDiff';
 import ColorConverter from './components/ColorConverter';
+import JwtDecoder from './components/JwtDecoder';
 
 interface ToolConfig {
   id: string;
   label: string;
   shortLabel: string;
   icon: React.ReactElement;
-  category: 'json' | 'text' | 'encoding' | 'web';
+  category: 'json' | 'text' | 'encoding' | 'web' | 'security';
   description: string;
   component: React.ReactNode;
 }
@@ -147,6 +149,15 @@ function App() {
       component: <Base64Converter />,
     },
     {
+      id: 'jwt-decoder',
+      label: 'JWT Decoder',
+      shortLabel: 'JWT',
+      icon: <Key />,
+      category: 'security',
+      description: 'Decode JWT header, payload, claims, and expiry',
+      component: <JwtDecoder />,
+    },
+    {
       id: 'protobuf',
       label: 'Protobuf Converter',
       shortLabel: 'Protobuf',
@@ -207,6 +218,7 @@ function App() {
     { id: 'text', label: 'Text & Markup' },
     { id: 'encoding', label: 'Encoding' },
     { id: 'web', label: 'Web & Design' },
+    { id: 'security', label: 'Security' },
   ] as const;
 
   const filteredTools = useMemo(() => {

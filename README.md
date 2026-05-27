@@ -15,6 +15,7 @@ A fast, offline-capable developer toolbox built with React and Material UI.
 | String Escape | Escape/unescape strings (JSON, HTML, URL, regex, SQL, …) |
 | XML Formatter | Format and validate XML documents |
 | Base64 Converter | Encode and decode Base64 strings |
+| JWT Decoder | Decode JWT header, payload, claims, and expiry locally |
 | Protobuf Converter | Encode and decode Protocol Buffers |
 | URL Encoder/Decoder | Encode/decode URLs with nested query parameter parsing |
 | Timestamp Converter | Convert Unix timestamps (s/ms/µs/ns), ISO 8601, and date strings across all formats and US timezones |
