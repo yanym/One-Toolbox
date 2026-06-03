@@ -2,7 +2,7 @@
   "name": "one-toolbox",
   "version": "1.0.0",
   "private": true,
-  "homepage": "https://yanym.github.io/Toolbox",
+  "homepage": "https://yanym.github.io/toolbox",
   "description": "A developer toolbox with JSON, encoding, text, and time utilities",
   "keywords": [
     "json",

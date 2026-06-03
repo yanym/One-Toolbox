@@ -2,7 +2,7 @@
 
 A fast, offline-capable developer toolbox built with React and Material UI.
 
-**Live site:** https://yanym.github.io/Toolbox
+**Live site:** https://yanym.github.io/toolbox
 
 ## Tools
 
