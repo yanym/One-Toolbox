@@ -43,6 +43,8 @@ import {
   Difference,
   Palette,
   Key,
+  Article,
+  TableChart,
 } from '@mui/icons-material';
 import './App.css';
 import JsonValidator from './components/JsonValidator';
@@ -59,13 +61,15 @@ import RegexTester from './components/RegexTester';
 import TextDiff from './components/TextDiff';
 import ColorConverter from './components/ColorConverter';
 import JwtDecoder from './components/JwtDecoder';
+import MarkdownPreviewer from './components/MarkdownPreviewer';
+import MarkdownTableConverter from './components/MarkdownTableConverter';
 
 interface ToolConfig {
   id: string;
   label: string;
   shortLabel: string;
   icon: React.ReactElement;
-  category: 'json' | 'text' | 'encoding' | 'web' | 'security';
+  category: 'json' | 'markdown' | 'text' | 'encoding' | 'web' | 'security';
   description: string;
   component: React.ReactNode;
 }
@@ -120,6 +124,24 @@ function App() {
       category: 'json',
       description: 'Convert JSON to code in multiple languages',
       component: <JsonSerializer />,
+    },
+    {
+      id: 'markdown-preview',
+      label: 'Markdown Previewer',
+      shortLabel: 'Preview',
+      icon: <Article />,
+      category: 'markdown',
+      description: 'Write Markdown and preview GitHub-flavored output live',
+      component: <MarkdownPreviewer />,
+    },
+    {
+      id: 'markdown-table',
+      label: 'Excel ↔ Markdown',
+      shortLabel: 'Tables',
+      icon: <TableChart />,
+      category: 'markdown',
+      description: 'Convert Excel sheets and pasted cells to Markdown tables and back',
+      component: <MarkdownTableConverter />,
     },
     {
       id: 'string-escape',
@@ -215,6 +237,7 @@ function App() {
 
   const categories = [
     { id: 'json', label: 'JSON Tools' },
+    { id: 'markdown', label: 'Markdown' },
     { id: 'text', label: 'Text & Markup' },
     { id: 'encoding', label: 'Encoding' },
     { id: 'web', label: 'Web & Design' },

@@ -21,7 +21,7 @@ interface ParsedTime {
   inputFormat: string;
 }
 
-type FormatKey = 'unix_s' | 'unix_ms' | 'iso8601' | 'utc' | 'tz_pt' | 'tz_ct' | 'tz_et' | 'relative';
+type FormatKey = 'unix_s' | 'unix_ms' | 'unix_us' | 'iso8601' | 'utc' | 'local' | 'tz_pt' | 'tz_ct' | 'tz_et' | 'relative';
 
 interface OutputRow {
   key: FormatKey;
@@ -38,8 +38,17 @@ function parseAny(raw: string): ParsedTime {
   const sanitized = s.replace(/[,\s_]/g, '');
 
   if (/^-?\d+(\.\d+)?$/.test(sanitized)) {
+    const unsigned = sanitized.replace(/^-/, '');
+    const digitCount = unsigned.split('.')[0].length;
     const n = parseFloat(sanitized);
     const abs = Math.abs(n);
+
+    if (!sanitized.includes('.')) {
+      if (digitCount === 10) return { ms: n * 1000, inputFormat: '10-digit Unix seconds' };
+      if (digitCount === 13) return { ms: n, inputFormat: '13-digit Unix milliseconds' };
+      if (digitCount === 16) return { ms: Math.round(n / 1000), inputFormat: '16-digit Unix microseconds' };
+    }
+
     if (abs < 1e10)  return { ms: Math.round(n * 1000),       inputFormat: 'Unix seconds' };
     if (abs < 1e13)  return { ms: Math.round(n),              inputFormat: 'Unix milliseconds' };
     if (abs < 1e16)  return { ms: Math.round(n / 1000),       inputFormat: 'Unix microseconds' };
@@ -91,13 +100,15 @@ function formatTz(ms: number, tz: string): string {
   }).format(new Date(ms));
 }
 
-function buildRows(ms: number): OutputRow[] {
+function buildRows(ms: number, localTimeZone: string): OutputRow[] {
   const d = new Date(ms);
   return [
     { key: 'unix_s',   label: 'Unix (seconds)',      description: 'Standard Unix timestamp',      value: String(Math.floor(ms / 1000)) },
     { key: 'unix_ms',  label: 'Unix (milliseconds)', description: 'JavaScript Date.now() / Java', value: String(ms) },
+    { key: 'unix_us',  label: 'Unix (microseconds)', description: '16-digit timestamp',           value: String(Math.trunc(ms * 1000)) },
     { key: 'iso8601',  label: 'ISO 8601',            description: 'Standard interchange format',  value: d.toISOString() },
     { key: 'utc',      label: 'UTC',                 description: 'Coordinated Universal Time',   value: d.toUTCString() },
+    { key: 'local',    label: 'Local Time',          description: localTimeZone,                   value: formatTz(ms, localTimeZone) },
     { key: 'tz_pt',    label: 'Pacific Time',        description: 'America/Los_Angeles (PT)',      value: formatTz(ms, 'America/Los_Angeles') },
     { key: 'tz_ct',    label: 'Central Time',        description: 'America/Chicago (CT)',          value: formatTz(ms, 'America/Chicago') },
     { key: 'tz_et',    label: 'Eastern Time',        description: 'America/New_York (ET)',         value: formatTz(ms, 'America/New_York') },
@@ -114,6 +125,7 @@ const TimestampConverter: React.FC = () => {
   const [parsed, setParsed] = useState<ParsedTime | null>(() => ({ ms: Date.now(), inputFormat: 'Unix milliseconds' }));
   const [error, setError] = useState('');
   const [copied, setCopied] = useState<string | null>(null);
+  const localTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 
   // Tick the live clock every second
   useEffect(() => {
@@ -143,7 +155,7 @@ const TimestampConverter: React.FC = () => {
     } catch {}
   };
 
-  const rows = parsed ? buildRows(parsed.ms) : [];
+  const rows = parsed ? buildRows(parsed.ms, localTimeZone) : [];
 
   return (
     <Box>
@@ -162,17 +174,22 @@ const TimestampConverter: React.FC = () => {
             <Typography variant="caption" color="text.secondary" fontWeight={600} sx={{ textTransform: 'uppercase', letterSpacing: '0.08em', fontSize: '0.68rem' }}>
               Current Time
             </Typography>
-            <Stack direction="row" alignItems="baseline" spacing={1}>
-              <Typography variant="h6" sx={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '1.15rem', color: 'primary.main', lineHeight: 1.3 }}>
-                {String(Math.floor(nowMs / 1000))}
-              </Typography>
-              <Typography variant="caption" sx={{ color: 'primary.main', opacity: 0.7, fontSize: '0.72rem', fontWeight: 600 }}>
-                10-digit · Unix seconds
-              </Typography>
+            <Stack spacing={0.25} sx={{ mt: 0.5 }}>
+              {[
+                { value: String(Math.floor(nowMs / 1000)), label: '10-digit seconds' },
+                { value: String(nowMs), label: '13-digit milliseconds' },
+                { value: String(nowMs * 1000), label: '16-digit microseconds' },
+              ].map(item => (
+                <Stack key={item.label} direction="row" alignItems="baseline" spacing={1}>
+                  <Typography sx={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '0.9rem', color: 'primary.main', lineHeight: 1.35 }}>
+                    {item.value}
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: 'primary.main', opacity: 0.7, fontSize: '0.68rem', fontWeight: 600 }}>
+                    {item.label}
+                  </Typography>
+                </Stack>
+              ))}
             </Stack>
-            <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'monospace' }}>
-              {new Date(nowMs).toISOString()}
-            </Typography>
           </Box>
           <Tooltip title="Use current timestamp">
             <Button
@@ -196,7 +213,7 @@ const TimestampConverter: React.FC = () => {
             label="Timestamp or date string"
             value={input}
             onChange={e => setInput(e.target.value)}
-            placeholder="e.g. 1700000000, 1700000000000, 2024-01-15T10:30:00Z"
+            placeholder="e.g. 1700000000, 1700000000000, 1700000000000000"
             sx={{ flex: 1, minWidth: 280 }}
             error={!!error}
             inputProps={{ style: { fontFamily: 'monospace', fontSize: '0.875rem' } }}
@@ -271,6 +288,7 @@ const TimestampConverter: React.FC = () => {
           {[
             '1700000000',
             '1700000000000',
+            '1700000000000000',
             '2024-01-15T10:30:00Z',
             '2024-01-15',
             'Jan 15 2024 10:30:00',
