@@ -11,7 +11,6 @@ import {
   Chip,
   Divider,
   Alert,
-  useTheme,
 } from '@mui/material';
 import GridWrapper from './GridWrapper';
 import { ContentCopy } from '@mui/icons-material';
@@ -133,7 +132,6 @@ const contrastRatio = (a: RGBA, b: RGBA): number => {
 // ── Component ───────────────────────────────────────────────────────────────
 
 const ColorConverter: React.FC = () => {
-  const theme = useTheme();
   const [input, setInput] = useState<string>('#4361ee');
   const [rgba, setRgba] = useState<RGBA>({ r: 67, g: 97, b: 238, a: 1 });
   const [error, setError] = useState<string>('');

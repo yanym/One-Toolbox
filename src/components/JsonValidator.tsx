@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useDeferredValue } from 'react';
 import {
   Box,
   Typography,
@@ -112,10 +112,10 @@ const JsonValidator: React.FC = () => {
   const [validationResult, setValidationResult] = useState<{
     isValid: boolean;
     error?: string;
-    formatted?: string;
     errorLine?: number;
     errorColumn?: number;
-  }>({ isValid: true });
+    parsed?: any;
+  }>({ isValid: true, parsed: JSON.parse(SAMPLE_JSON) });
   const [indentSize, setIndentSize] = useState(2);
   const [isValidating, setIsValidating] = useState(false);
   const [snackbar, setSnackbar] = useState<{
@@ -124,6 +124,10 @@ const JsonValidator: React.FC = () => {
     severity: 'success' | 'error' | 'info' | 'warning';
   }>({ open: false, message: '', severity: 'info' });
   const [showAdvanced, setShowAdvanced] = useState(false);
+
+  const showSnackbar = useCallback((message: string, severity: 'success' | 'error' | 'info' | 'warning') => {
+    setSnackbar({ open: true, message, severity });
+  }, []);
 
   const validateJson = useCallback((value: string) => {
     if (!value.trim()) {
@@ -134,11 +138,10 @@ const JsonValidator: React.FC = () => {
     setIsValidating(true);
 
     try {
-      const parsed = jsonlint.parse(value);
-      const formatted = JSON.stringify(parsed, null, indentSize);
+      const parsed = value.length > 1_000_000 ? JSON.parse(value) : jsonlint.parse(value);
       setValidationResult({
         isValid: true,
-        formatted
+        parsed,
       });
     } catch (error: any) {
       // Extract line and column information from error message
@@ -154,7 +157,7 @@ const JsonValidator: React.FC = () => {
     } finally {
       setIsValidating(false);
     }
-  }, [indentSize]);
+  }, []);
 
   const handleInputChange = useCallback((value: string | undefined) => {
     const newValue = value || '';
@@ -162,11 +165,11 @@ const JsonValidator: React.FC = () => {
   }, []);
 
   const formatJson = useCallback(() => {
-    if (validationResult.isValid && validationResult.formatted) {
-      setJsonInput(validationResult.formatted);
+    if (validationResult.isValid && validationResult.parsed !== undefined) {
+      setJsonInput(JSON.stringify(validationResult.parsed, null, indentSize));
       showSnackbar('JSON formatted successfully', 'success');
     }
-  }, [validationResult]);
+  }, [indentSize, showSnackbar, validationResult]);
 
   const minifyJson = useCallback(() => {
     try {
@@ -178,23 +181,22 @@ const JsonValidator: React.FC = () => {
     } catch (error) {
       showSnackbar('Cannot minify invalid JSON', 'error');
     }
-  }, [jsonInput, validateJson]);
+  }, [jsonInput, showSnackbar, validateJson]);
 
   const clearInput = useCallback(() => {
     setJsonInput('');
     setValidationResult({ isValid: true });
     showSnackbar('Input cleared', 'info');
-  }, []);
+  }, [showSnackbar]);
 
   const copyToClipboard = useCallback(async (text: string) => {
     try {
       await navigator.clipboard.writeText(text);
       showSnackbar('Copied to clipboard', 'success');
-    } catch (error) {
-      console.error('Failed to copy to clipboard:', error);
+    } catch {
       showSnackbar('Failed to copy to clipboard', 'error');
     }
-  }, []);
+  }, [showSnackbar]);
 
   const downloadJson = useCallback(() => {
     if (!jsonInput.trim()) {
@@ -212,7 +214,7 @@ const JsonValidator: React.FC = () => {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
     showSnackbar('JSON downloaded', 'success');
-  }, [jsonInput]);
+  }, [jsonInput, showSnackbar]);
 
   const uploadJson = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -227,7 +229,6 @@ const JsonValidator: React.FC = () => {
     reader.onload = (e) => {
       const content = e.target?.result as string;
       setJsonInput(content);
-      validateJson(content);
       showSnackbar('JSON file loaded', 'success');
     };
     reader.onerror = () => {
@@ -237,11 +238,7 @@ const JsonValidator: React.FC = () => {
     
     // Reset input
     event.target.value = '';
-  }, [validateJson]);
-
-  const showSnackbar = useCallback((message: string, severity: 'success' | 'error' | 'info' | 'warning') => {
-    setSnackbar({ open: true, message, severity });
-  }, []);
+  }, [showSnackbar]);
 
   const handleCloseSnackbar = useCallback(() => {
     setSnackbar(prev => ({ ...prev, open: false }));
@@ -250,47 +247,22 @@ const JsonValidator: React.FC = () => {
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
       validateJson(jsonInput);
-    }, 300);
+    }, jsonInput.length > 1_000_000 ? 650 : 250);
 
     return () => window.clearTimeout(timeoutId);
   }, [validateJson, jsonInput]);
 
-  const getJsonStats = () => {
-    if (!validationResult.isValid || !jsonInput.trim()) return null;
+  const stats = useMemo(() => {
+    if (!validationResult.isValid || validationResult.parsed === undefined || !jsonInput.trim()) return null;
+    return {
+      size: new Blob([jsonInput]).size,
+      lines: jsonInput.split('\n').length,
+      characters: jsonInput.length,
+    };
+  }, [jsonInput, validationResult]);
 
-    try {
-      const parsed = JSON.parse(jsonInput);
-      const stats = {
-        size: new Blob([jsonInput]).size,
-        lines: jsonInput.split('\n').length,
-        characters: jsonInput.length,
-        keys: countKeys(parsed),
-        depth: getMaxDepth(parsed)
-      };
-      return stats;
-    } catch {
-      return null;
-    }
-  };
-
-  const countKeys = (obj: any): number => {
-    if (typeof obj !== 'object' || obj === null) return 0;
-    if (Array.isArray(obj)) {
-      return obj.reduce((sum: number, item: any) => sum + countKeys(item), 0);
-    }
-    return Object.keys(obj).length + Object.values(obj).reduce((sum: number, value: any) => sum + countKeys(value), 0);
-  };
-
-  const getMaxDepth = (obj: any): number => {
-    if (typeof obj !== 'object' || obj === null) return 0;
-    if (Array.isArray(obj)) {
-      return obj.length > 0 ? 1 + Math.max(...obj.map(getMaxDepth)) : 1;
-    }
-    const values = Object.values(obj);
-    return values.length > 0 ? 1 + Math.max(...values.map(getMaxDepth)) : 1;
-  };
-
-  const stats = getJsonStats();
+  const deferredParsedJson = useDeferredValue(validationResult.parsed);
+  const isLargeJson = jsonInput.length > 1_000_000;
 
   return (
     <Box>
@@ -340,10 +312,6 @@ const JsonValidator: React.FC = () => {
                 height: { xs: '360px', md: '340px' },
                 display: 'flex',
                 flexDirection: 'column',
-                transition: 'all 0.3s ease',
-                '&:hover': {
-                  boxShadow: 4,
-                }
               }}
             >
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
@@ -424,10 +392,12 @@ const JsonValidator: React.FC = () => {
                       vertical: 'visible',
                       horizontal: 'visible'
                     },
-                    wordWrap: 'on',
                     automaticLayout: true,
-                    formatOnPaste: true,
-                    formatOnType: true,
+                    largeFileOptimizations: true,
+                    formatOnPaste: !isLargeJson,
+                    formatOnType: !isLargeJson,
+                    folding: !isLargeJson,
+                    wordWrap: isLargeJson ? 'off' : 'on',
                     tabSize: indentSize,
                     insertSpaces: true,
                   }}
@@ -436,12 +406,9 @@ const JsonValidator: React.FC = () => {
             </Paper>
 
             <JsonViewer
-              value={jsonInput}
-              onChange={setJsonInput}
-              showInput={false}
-              title=""
-              height={720}
-              compact
+              data={deferredParsedJson}
+              sourceSize={jsonInput.length}
+              height={620}
             />
           </Stack>
         </GridWrapper>
@@ -456,18 +423,7 @@ const JsonValidator: React.FC = () => {
                 </Typography>
                 {isValidating && <LinearProgress sx={{ mb: 1.5 }} />}
                 {validationResult.isValid ? (
-                  <Alert 
-                    severity="success" 
-                    icon={<CheckCircle />}
-                    sx={{ 
-                      animation: 'successPulse 0.6s ease-in-out',
-                      '@keyframes successPulse': {
-                        '0%': { transform: 'scale(1)' },
-                        '50%': { transform: 'scale(1.02)' },
-                        '100%': { transform: 'scale(1)' }
-                      }
-                    }}
-                  >
+                  <Alert severity="success" icon={<CheckCircle />}>
                     <Box>
                       <Typography variant="body2" fontWeight={600}>
                         Valid JSON
@@ -480,18 +436,7 @@ const JsonValidator: React.FC = () => {
                     </Box>
                   </Alert>
                 ) : (
-                  <Alert 
-                    severity="error" 
-                    icon={<Error />}
-                    sx={{
-                      animation: 'errorShake 0.5s ease-in-out',
-                      '@keyframes errorShake': {
-                        '0%, 100%': { transform: 'translateX(0)' },
-                        '25%': { transform: 'translateX(-2px)' },
-                        '75%': { transform: 'translateX(2px)' }
-                      }
-                    }}
-                  >
+                  <Alert severity="error" icon={<Error />}>
                     <Box>
                       <Typography variant="body2" fontWeight={600}>
                         Invalid JSON
@@ -534,18 +479,6 @@ const JsonValidator: React.FC = () => {
                         label={`Characters: ${stats.characters.toLocaleString()}`} 
                         variant="outlined" 
                         color="info"
-                        size="small"
-                      />
-                      <Chip 
-                        label={`Keys: ${stats.keys.toLocaleString()}`} 
-                        variant="outlined" 
-                        color="success"
-                        size="small"
-                      />
-                      <Chip 
-                        label={`Max Depth: ${stats.depth}`} 
-                        variant="outlined" 
-                        color="warning"
                         size="small"
                       />
                     </>

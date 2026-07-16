@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import {
   Box,
   Typography,
@@ -33,8 +33,11 @@ const XmlFormatter: React.FC = () => {
   const [validationResult, setValidationResult] = useState<{
     isValid: boolean;
     error?: string;
-    formatted?: string;
-  }>({ isValid: true });
+    document?: XMLDocument;
+  }>(() => ({
+    isValid: true,
+    document: new DOMParser().parseFromString('<?xml version="1.0"?><root />', 'text/xml'),
+  }));
   const [indentSize, setIndentSize] = useState(2);
 
   const formatXml = (xml: string, indent: number = 2): string => {
@@ -97,10 +100,9 @@ const XmlFormatter: React.FC = () => {
         throw new Error(errorText);
       }
       
-      const formatted = formatXml(value, indentSize);
       setValidationResult({
         isValid: true,
-        formatted
+        document: xmlDoc,
       });
     } catch (error: any) {
       setValidationResult({
@@ -108,17 +110,15 @@ const XmlFormatter: React.FC = () => {
         error: error.message || 'Invalid XML'
       });
     }
-  }, [indentSize]);
+  }, []);
 
   const handleInputChange = (value: string | undefined) => {
-    const newValue = value || '';
-    setXmlInput(newValue);
-    validateXml(newValue);
+    setXmlInput(value || '');
   };
 
   const handleFormatXml = () => {
-    if (validationResult.isValid && validationResult.formatted) {
-      setXmlInput(validationResult.formatted);
+    if (validationResult.isValid && xmlInput.trim()) {
+      setXmlInput(formatXml(xmlInput, indentSize));
     }
   };
 
@@ -140,46 +140,31 @@ const XmlFormatter: React.FC = () => {
   const copyToClipboard = async (text: string) => {
     try {
       await navigator.clipboard.writeText(text);
-    } catch (error) {
-      console.error('Failed to copy to clipboard:', error);
-    }
+    } catch {}
   };
 
-  const getXmlStats = () => {
-    if (!validationResult.isValid || !xmlInput.trim()) return null;
+  useEffect(() => {
+    const timeoutId = window.setTimeout(
+      () => validateXml(xmlInput),
+      xmlInput.length > 1_000_000 ? 650 : 250,
+    );
+    return () => window.clearTimeout(timeoutId);
+  }, [validateXml, xmlInput]);
 
-    try {
-      const parser = new DOMParser();
-      const xmlDoc = parser.parseFromString(xmlInput, 'text/xml');
-      
-      const getAllElements = (node: Node): Element[] => {
-        const elements: Element[] = [];
-        if (node.nodeType === Node.ELEMENT_NODE) {
-          elements.push(node as Element);
-        }
-        for (let i = 0; i < node.childNodes.length; i++) {
-          elements.push(...getAllElements(node.childNodes[i]));
-        }
-        return elements;
-      };
+  const stats = useMemo(() => {
+    if (!validationResult.isValid || !validationResult.document || !xmlInput.trim()) return null;
+    const elements = validationResult.document.getElementsByTagName('*');
+    let attributes = 0;
+    for (let index = 0; index < elements.length; index++) attributes += elements[index].attributes.length;
 
-      const elements = getAllElements(xmlDoc);
-      const attributes = elements.reduce((sum, el) => sum + el.attributes.length, 0);
-      
-      const stats = {
-        size: new TextEncoder().encode(xmlInput).length,
-        lines: xmlInput.split('\n').length,
-        characters: xmlInput.length,
-        elements: elements.length,
-        attributes: attributes
-      };
-      return stats;
-    } catch {
-      return null;
-    }
-  };
-
-  const stats = getXmlStats();
+    return {
+      size: new TextEncoder().encode(xmlInput).length,
+      lines: xmlInput.split('\n').length,
+      characters: xmlInput.length,
+      elements: elements.length,
+      attributes,
+    };
+  }, [validationResult, xmlInput]);
 
   return (
     <Box>
@@ -245,6 +230,7 @@ const XmlFormatter: React.FC = () => {
                 theme={darkMode ? 'vs-dark' : 'light'}
                 options={{
                   minimap: { enabled: false },
+                  largeFileOptimizations: true,
                   scrollBeyondLastLine: false,
                   fontSize: 14,
                   lineNumbers: 'on',

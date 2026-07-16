@@ -28,6 +28,7 @@ import {
   CleaningServices
 } from '@mui/icons-material';
 import Editor from '@monaco-editor/react';
+import { decodeUtf8Base64, encodeUtf8Base64 } from '../utils/base64';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -92,7 +93,7 @@ const StringEscape: React.FC = () => {
           escaped = encodeURIComponent(processedInput);
           break;
         case 'base64':
-          escaped = btoa(processedInput);
+          escaped = encodeUtf8Base64(processedInput);
           break;
         case 'regex':
           escaped = escapeRegex(processedInput);
@@ -136,7 +137,7 @@ const StringEscape: React.FC = () => {
           unescaped = decodeURIComponent(input);
           break;
         case 'base64':
-          unescaped = atob(input);
+          unescaped = decodeUtf8Base64(input);
           break;
         case 'regex':
           unescaped = unescapeRegex(input);
@@ -274,9 +275,7 @@ const StringEscape: React.FC = () => {
   const copyToClipboard = async (text: string) => {
     try {
       await navigator.clipboard.writeText(text);
-    } catch (error) {
-      console.error('Failed to copy to clipboard:', error);
-    }
+    } catch {}
   };
 
   const clearInput = () => {

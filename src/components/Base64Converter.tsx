@@ -10,7 +10,6 @@ import {
   ToggleButton,
   ToggleButtonGroup,
   useTheme,
-  alpha
 } from '@mui/material';
 import GridWrapper from './GridWrapper';
 import {
@@ -19,6 +18,7 @@ import {
   Clear,
 } from '@mui/icons-material';
 import Editor from '@monaco-editor/react';
+import { decodeUtf8Base64, encodeUtf8Base64 } from '../utils/base64';
 
 const Base64Converter: React.FC = () => {
   const theme = useTheme();
@@ -32,10 +32,9 @@ const Base64Converter: React.FC = () => {
     if (!text.trim()) { setOutputText(''); setError(''); return; }
     try {
       if (currentMode === 'encode') {
-        setOutputText(btoa(unescape(encodeURIComponent(text))));
+        setOutputText(encodeUtf8Base64(text));
       } else {
-        const bytes = Uint8Array.from(atob(text.trim()), c => c.charCodeAt(0));
-        setOutputText(new TextDecoder().decode(bytes));
+        setOutputText(decodeUtf8Base64(text));
       }
       setError('');
     } catch (err: any) { setError(err.message || 'Conversion failed'); setOutputText(''); }
@@ -81,7 +80,7 @@ const Base64Converter: React.FC = () => {
               </Stack>
             </Box>
             <Box sx={{ height: 420 }}>
-              <Editor height="100%" defaultLanguage="text" value={inputText} onChange={handleInputChange} theme={darkMode ? 'vs-dark' : 'light'} options={{ minimap: { enabled: false }, scrollBeyondLastLine: false, fontSize: 13, lineNumbers: 'on', wordWrap: 'on', padding: { top: 8 } }} />
+              <Editor height="100%" defaultLanguage="text" value={inputText} onChange={handleInputChange} theme={darkMode ? 'vs-dark' : 'light'} options={{ minimap: { enabled: false }, largeFileOptimizations: true, scrollBeyondLastLine: false, fontSize: 13, lineNumbers: 'on', wordWrap: 'on', padding: { top: 8 } }} />
             </Box>
           </Paper>
         </GridWrapper>
@@ -95,7 +94,7 @@ const Base64Converter: React.FC = () => {
               <Tooltip title="Copy"><IconButton size="small" onClick={() => copyToClipboard(outputText)} disabled={!outputText}><ContentCopy sx={{ fontSize: 16 }} /></IconButton></Tooltip>
             </Box>
             <Box sx={{ height: 420 }}>
-              <Editor height="100%" defaultLanguage="text" value={outputText} theme={darkMode ? 'vs-dark' : 'light'} options={{ readOnly: true, minimap: { enabled: false }, scrollBeyondLastLine: false, fontSize: 13, lineNumbers: 'on', wordWrap: 'on', padding: { top: 8 } }} />
+              <Editor height="100%" defaultLanguage="text" value={outputText} theme={darkMode ? 'vs-dark' : 'light'} options={{ readOnly: true, minimap: { enabled: false }, largeFileOptimizations: true, scrollBeyondLastLine: false, fontSize: 13, lineNumbers: 'on', wordWrap: 'on', padding: { top: 8 } }} />
             </Box>
           </Paper>
         </GridWrapper>

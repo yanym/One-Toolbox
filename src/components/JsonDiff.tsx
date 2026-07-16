@@ -31,6 +31,21 @@ interface DiffEntry {
   newValue?: any;
 }
 
+const MAX_DIFF_ENTRIES = 5000;
+
+const countProperties = (root: any): number => {
+  let count = 0;
+  const stack = [root];
+  while (stack.length > 0) {
+    const value = stack.pop();
+    if (typeof value !== 'object' || value === null) continue;
+    const values = Object.values(value);
+    if (!Array.isArray(value)) count += values.length;
+    stack.push(...values);
+  }
+  return count;
+};
+
 const JsonDiff: React.FC = () => {
   const theme = useTheme();
   const darkMode = theme.palette.mode === 'dark';
@@ -40,6 +55,8 @@ const JsonDiff: React.FC = () => {
   const [diffEntries, setDiffEntries] = useState<DiffEntry[]>([]);
   const [error, setError] = useState('');
   const [stats, setStats] = useState<{ added: number; modified: number; deleted: number; unchanged: number } | null>(null);
+  const [isTruncated, setIsTruncated] = useState(false);
+  const isLargeDiff = leftJson.length + rightJson.length > 2_000_000;
 
   const calculateDiff = useCallback(() => {
     try {
@@ -47,18 +64,24 @@ const JsonDiff: React.FC = () => {
       const right = JSON.parse(rightJson);
 
       const instance = jsondiffpatch.create({
-        objectHash: (obj: any) => obj.id || obj._id || obj.name || JSON.stringify(obj),
-        arrays: { detectMove: true, includeValueOnMove: false },
+        objectHash: (obj: any, index?: number) => obj.id || obj._id || obj.name || `index:${index ?? 0}`,
+        arrays: { detectMove: !isLargeDiff, includeValueOnMove: false },
       });
 
       const delta = instance.diff(left, right);
       const entries: DiffEntry[] = [];
 
-      const traverse = (obj: any, path: string[] = []) => {
-        if (!obj || typeof obj !== 'object') return;
-        Object.keys(obj).forEach(key => {
-          const value = obj[key];
-          const currentPath = [...path, key].join('.');
+      const traverse = (root: any) => {
+        const stack = [{ value: root, path: [] as string[] }];
+        while (stack.length > 0 && entries.length < MAX_DIFF_ENTRIES) {
+          const current = stack.pop()!;
+          if (!current.value || typeof current.value !== 'object') continue;
+          const keys = Object.keys(current.value);
+          for (let index = keys.length - 1; index >= 0 && entries.length < MAX_DIFF_ENTRIES; index--) {
+            const key = keys[index];
+            const value = current.value[key];
+            const nextPath = [...current.path, key];
+            const currentPath = nextPath.join('.');
           if (Array.isArray(value)) {
             if (value.length === 1) {
               entries.push({ path: currentPath, type: 'added', newValue: value[0] });
@@ -68,13 +91,15 @@ const JsonDiff: React.FC = () => {
               entries.push({ path: currentPath, type: 'deleted', oldValue: value[0] });
             }
           } else if (typeof value === 'object') {
-            traverse(value, [...path, key]);
+              stack.push({ value, path: nextPath });
+            }
           }
-        });
+        }
       };
 
       if (delta) {
         traverse(delta);
+        setIsTruncated(entries.length === MAX_DIFF_ENTRIES);
         const leftProps = countProperties(left);
         const rightProps = countProperties(right);
         const modified = entries.filter(e => e.type === 'modified').length;
@@ -85,6 +110,7 @@ const JsonDiff: React.FC = () => {
           unchanged: Math.max(0, Math.min(leftProps, rightProps) - modified),
         });
       } else {
+        setIsTruncated(false);
         setStats({ added: 0, modified: 0, deleted: 0, unchanged: countProperties(left) });
       }
 
@@ -94,14 +120,9 @@ const JsonDiff: React.FC = () => {
       setError(err.message || 'Invalid JSON in one or both inputs');
       setDiffEntries([]);
       setStats(null);
+      setIsTruncated(false);
     }
-  }, [leftJson, rightJson]);
-
-  const countProperties = (obj: any): number => {
-    if (typeof obj !== 'object' || obj === null) return 0;
-    if (Array.isArray(obj)) return obj.reduce((s: number, i: any) => s + countProperties(i), 0);
-    return Object.keys(obj).length + Object.values(obj).reduce((s: number, v: any) => s + countProperties(v), 0);
-  };
+  }, [isLargeDiff, leftJson, rightJson]);
 
   const swapInputs = () => {
     setLeftJson(rightJson);
@@ -114,6 +135,7 @@ const JsonDiff: React.FC = () => {
     setDiffEntries([]);
     setError('');
     setStats(null);
+    setIsTruncated(false);
   };
 
   const copyToClipboard = async (text: string) => {
@@ -128,9 +150,8 @@ const JsonDiff: React.FC = () => {
   }, [leftJson, rightJson, calculateDiff]);
 
   const formatValue = (v: any) => {
-    if (typeof v === 'string') return `"${v}"`;
-    if (typeof v === 'object') return JSON.stringify(v);
-    return String(v);
+    const value = typeof v === 'string' ? `"${v}"` : typeof v === 'object' ? JSON.stringify(v) : String(v);
+    return value.length > 300 ? `${value.slice(0, 300)}…` : value;
   };
 
   const DiffIcon = ({ type }: { type: 'added' | 'modified' | 'deleted' }) => {
@@ -158,7 +179,7 @@ const JsonDiff: React.FC = () => {
             <Tooltip title="Copy"><IconButton size="small" onClick={() => copyToClipboard(leftJson)}><ContentCopy sx={{ fontSize: 16 }} /></IconButton></Tooltip>
           </Box>
           <Box sx={{ height: 320 }}>
-            <Editor height="100%" defaultLanguage="json" value={leftJson} onChange={(v) => setLeftJson(v || '')} theme={darkMode ? 'vs-dark' : 'light'} options={{ minimap: { enabled: false }, scrollBeyondLastLine: false, fontSize: 13, lineNumbers: 'on', wordWrap: 'on', padding: { top: 8 } }} />
+            <Editor height="100%" defaultLanguage="json" value={leftJson} onChange={(v) => setLeftJson(v || '')} theme={darkMode ? 'vs-dark' : 'light'} options={{ minimap: { enabled: false }, largeFileOptimizations: true, scrollBeyondLastLine: false, fontSize: 13, lineNumbers: 'on', wordWrap: isLargeDiff ? 'off' : 'on', padding: { top: 8 } }} />
           </Box>
         </Paper>
 
@@ -178,7 +199,7 @@ const JsonDiff: React.FC = () => {
             <Tooltip title="Copy"><IconButton size="small" onClick={() => copyToClipboard(rightJson)}><ContentCopy sx={{ fontSize: 16 }} /></IconButton></Tooltip>
           </Box>
           <Box sx={{ height: 320 }}>
-            <Editor height="100%" defaultLanguage="json" value={rightJson} onChange={(v) => setRightJson(v || '')} theme={darkMode ? 'vs-dark' : 'light'} options={{ minimap: { enabled: false }, scrollBeyondLastLine: false, fontSize: 13, lineNumbers: 'on', wordWrap: 'on', padding: { top: 8 } }} />
+            <Editor height="100%" defaultLanguage="json" value={rightJson} onChange={(v) => setRightJson(v || '')} theme={darkMode ? 'vs-dark' : 'light'} options={{ minimap: { enabled: false }, largeFileOptimizations: true, scrollBeyondLastLine: false, fontSize: 13, lineNumbers: 'on', wordWrap: isLargeDiff ? 'off' : 'on', padding: { top: 8 } }} />
           </Box>
         </Paper>
       </Box>
@@ -190,6 +211,11 @@ const JsonDiff: React.FC = () => {
       </Stack>
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+      {isTruncated && (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          Showing the first {MAX_DIFF_ENTRIES.toLocaleString()} differences. Refine the inputs for a smaller result set.
+        </Alert>
+      )}
 
       {/* Stats */}
       {stats && (

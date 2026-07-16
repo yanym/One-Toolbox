@@ -1,733 +1,502 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   Box,
-  Typography,
-  Button,
-  Paper,
   IconButton,
-  Tooltip,
+  InputAdornment,
+  Paper,
   Stack,
-  Alert,
-  Chip,
-  Dialog,
-  DialogContent,
-  DialogTitle,
   TextField,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  ToggleButton,
-  ToggleButtonGroup,
-  useTheme
+  Tooltip,
+  Typography,
+  alpha,
+  useTheme,
 } from '@mui/material';
-import GridWrapper from './GridWrapper';
 import {
+  ChevronRight,
   ContentCopy,
-  Clear,
-  Close,
-  ExpandMore,
-  OpenInFull,
-  Search,
-  Visibility,
-  VisibilityOff,
-  FilterList
+  KeyboardArrowDown,
+  KeyboardArrowUp,
+  UnfoldLess,
 } from '@mui/icons-material';
-import Editor from '@monaco-editor/react';
+
+type JsonType = 'object' | 'array' | 'string' | 'number' | 'boolean' | 'null';
 
 interface JsonNode {
+  id: string;
+  parentId: string | null;
   key: string;
-  value: any;
-  type: string;
   path: string;
-  parentPath: string | null;
+  level: number;
+  type: JsonType;
+  value: any;
+  summary: string;
+  searchable: string;
+  isContainer: boolean;
+}
+
+interface PendingJsonNode {
+  value: any;
+  id: string;
+  parentId: string | null;
+  key: string;
+  path: string;
   level: number;
 }
 
 interface JsonViewerProps {
-  value?: string;
-  onChange?: (value: string) => void;
-  showInput?: boolean;
-  title?: string;
+  data: any;
+  sourceSize?: number;
   height?: number | string;
-  compact?: boolean;
 }
 
-const DEFAULT_JSON = '{\n  "user": {\n    "id": 123,\n    "name": "John Doe",\n    "email": "john@example.com",\n    "active": true,\n    "profile": {\n      "age": 30,\n      "city": "New York",\n      "hobbies": ["reading", "coding", "traveling"],\n      "preferences": {\n        "theme": "dark",\n        "notifications": true,\n        "language": "en"\n      }\n    },\n    "orders": [\n      {\n        "id": "order-1",\n        "date": "2024-01-15",\n        "total": 99.99,\n        "items": ["laptop", "mouse"]\n      },\n      {\n        "id": "order-2",\n        "date": "2024-02-20",\n        "total": 49.99,\n        "items": ["book"]\n      }\n    ]\n  }\n}';
+const ROW_HEIGHT = 32;
+const SEARCH_BATCH_SIZE = 5000;
+const INDEX_BATCH_SIZE = 10000;
 
-const getJsonType = (value: any): string => {
+const getType = (value: any): JsonType => {
   if (value === null) return 'null';
   if (Array.isArray(value)) return 'array';
-  return typeof value;
+  return typeof value as JsonType;
 };
 
-const JsonViewer: React.FC<JsonViewerProps> = ({
-  value,
-  onChange,
-  showInput = true,
-  title = 'JSON Viewer & Explorer',
-  height = 600,
-  compact = false,
-}) => {
+const getSummary = (value: any, type: JsonType): string => {
+  if (type === 'object') return `{${Object.keys(value).length}}`;
+  if (type === 'array') return `[${value.length}]`;
+  if (type === 'string') {
+    const serialized = JSON.stringify(value);
+    return serialized.length > 500 ? `${serialized.slice(0, 500)}…` : serialized;
+  }
+  if (type === 'null') return 'null';
+  return String(value);
+};
+
+const escapePointerToken = (value: string) => value.replace(/~/g, '~0').replace(/\//g, '~1');
+
+const indexNode = (current: PendingJsonNode, nodes: JsonNode[], stack: PendingJsonNode[]) => {
+    const type = getType(current.value);
+    const isContainer = type === 'object' || type === 'array';
+    const summary = getSummary(current.value, type);
+
+    nodes.push({
+      ...current,
+      type,
+      summary,
+      isContainer,
+      searchable: `${current.key}\n${current.path}`.toLocaleLowerCase(),
+    });
+
+    if (!isContainer) return;
+
+    const entries = type === 'array'
+      ? current.value.map((value: any, index: number) => [String(index), value] as const)
+      : Object.entries(current.value);
+
+    for (let index = entries.length - 1; index >= 0; index--) {
+      const [key, value] = entries[index];
+      const pointerKey = escapePointerToken(key);
+      const isArrayItem = type === 'array';
+      stack.push({
+        value,
+        id: `${current.id}/${pointerKey}`,
+        parentId: current.id,
+        key: isArrayItem ? `[${key}]` : key,
+        path: isArrayItem ? `${current.path}[${key}]` : `${current.path}.${key}`,
+        level: current.level + 1,
+      });
+    }
+};
+
+const JsonViewer: React.FC<JsonViewerProps> = ({ data, sourceSize = 0, height = 620 }) => {
   const theme = useTheme();
-  const darkMode = theme.palette.mode === 'dark';
-  const isControlled = value !== undefined;
-  const [localJsonInput, setLocalJsonInput] = useState(DEFAULT_JSON);
-  const jsonInput = isControlled ? value : localJsonInput;
-  const [parsedJson, setParsedJson] = useState<any>(null);
-  const [error, setError] = useState('');
-  const [viewMode, setViewMode] = useState<'tree' | 'table' | 'raw'>('tree');
+  const viewportRef = useRef<HTMLDivElement | null>(null);
+  const matchSourceRef = useRef<JsonNode[] | null>(null);
+  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(() => new Set(['$']));
   const [searchTerm, setSearchTerm] = useState('');
-  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
-  const [filteredNodes, setFilteredNodes] = useState<JsonNode[]>([]);
-  const [showOnlyMatches, setShowOnlyMatches] = useState(false);
-  const [theaterOpen, setTheaterOpen] = useState(false);
+  const [matchIndexes, setMatchIndexes] = useState<number[]>([]);
+  const [activeMatch, setActiveMatch] = useState(-1);
+  const [isSearching, setIsSearching] = useState(false);
+  const [pendingScrollId, setPendingScrollId] = useState<string | null>(null);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [viewportHeight, setViewportHeight] = useState(400);
+  const [nodes, setNodes] = useState<JsonNode[]>([]);
+  const [isIndexing, setIsIndexing] = useState(false);
 
-  const setJsonInput = useCallback((nextValue: string) => {
-    if (onChange) {
-      onChange(nextValue);
-    } else {
-      setLocalJsonInput(nextValue);
+  useEffect(() => {
+    let cancelled = false;
+    let timer = 0;
+    if (data === undefined) {
+      setNodes([]);
+      setIsIndexing(false);
+      return;
     }
-  }, [onChange]);
 
-  const flattenJson = useCallback((obj: any, parentPath = '', level = 0): JsonNode[] => {
-    const nodes: JsonNode[] = [];
+    const indexedNodes: JsonNode[] = [];
+    const stack: PendingJsonNode[] = [{
+      value: data,
+      id: '$',
+      parentId: null,
+      key: 'root',
+      path: '$',
+      level: 0,
+    }];
+    setNodes([]);
+    setIsIndexing(true);
 
-    if (typeof obj !== 'object' || obj === null) {
-      return [{
-        key: 'value',
-        value: obj,
-        type: obj === null ? 'null' : typeof obj,
-        path: 'value',
-        parentPath: null,
-        level
-      }];
-    }
-    
-    if (typeof obj === 'object' && obj !== null) {
-      if (Array.isArray(obj)) {
-        obj.forEach((item, index) => {
-          const key = `[${index}]`;
-          const path = parentPath ? `${parentPath}${key}` : key;
-          const type = getJsonType(item);
-          
-          nodes.push({
-            key,
-            value: item,
-            type,
-            path,
-            parentPath: parentPath || null,
-            level
-          });
-          
-          if (typeof item === 'object' && item !== null) {
-            nodes.push(...flattenJson(item, path, level + 1));
-          }
-        });
-      } else {
-        Object.entries(obj).forEach(([key, value]) => {
-          const path = parentPath ? `${parentPath}.${key}` : key;
-          const type = getJsonType(value);
-          
-          nodes.push({
-            key,
-            value,
-            type,
-            path,
-            parentPath: parentPath || null,
-            level
-          });
-          
-          if (typeof value === 'object' && value !== null) {
-            nodes.push(...flattenJson(value, path, level + 1));
-          }
-        });
+    const processBatch = () => {
+      let processed = 0;
+      while (stack.length > 0 && processed < INDEX_BATCH_SIZE) {
+        indexNode(stack.pop()!, indexedNodes, stack);
+        processed++;
       }
-    }
-    
-    return nodes;
+
+      if (cancelled) return;
+      if (stack.length > 0) {
+        timer = window.setTimeout(processBatch, 0);
+      } else {
+        setNodes(indexedNodes);
+        setIsIndexing(false);
+      }
+    };
+
+    timer = window.setTimeout(processBatch, 0);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [data]);
+
+  const nodeById = useMemo(() => new Map(nodes.map(node => [node.id, node])), [nodes]);
+  const isLarge = nodes.length > 10000 || sourceSize > 2_000_000;
+  const nodeMatches = useCallback((node: JsonNode, query: string) => {
+    if (node.searchable.includes(query)) return true;
+    if (node.isContainer) return false;
+    return String(node.value).toLocaleLowerCase().includes(query);
   }, []);
 
-  const parseJson = useCallback(() => {
-    if (!jsonInput.trim()) {
-      setParsedJson(null);
-      setError('');
-      setFilteredNodes([]);
-      setExpandedNodes(new Set());
+  useEffect(() => {
+    matchSourceRef.current = null;
+    setExpandedNodes(new Set(['$']));
+    setSearchTerm('');
+    setMatchIndexes([]);
+    setActiveMatch(-1);
+    setScrollTop(0);
+    if (viewportRef.current) viewportRef.current.scrollTop = 0;
+  }, [data]);
+
+  useLayoutEffect(() => {
+    const element = viewportRef.current;
+    if (!element) return;
+
+    const updateHeight = () => setViewportHeight(element.clientHeight);
+    updateHeight();
+    const observer = new ResizeObserver(updateHeight);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const query = searchTerm.trim().toLocaleLowerCase();
+    let cancelled = false;
+    let cursor = 0;
+    const matches: number[] = [];
+
+    if (!query) {
+      setMatchIndexes([]);
+      setActiveMatch(-1);
+      setIsSearching(false);
       return;
     }
 
-    try {
-      const parsed = JSON.parse(jsonInput);
-      setParsedJson(parsed);
-      setError('');
-
-      const nodes = flattenJson(parsed);
-      setFilteredNodes(nodes);
-      setExpandedNodes(new Set(nodes.filter(node => node.level <= 1 && typeof node.value === 'object' && node.value !== null).map(node => node.path)));
-    } catch (err: any) {
-      setError(err.message || 'Invalid JSON');
-      setParsedJson(null);
-      setFilteredNodes([]);
-    }
-  }, [flattenJson, jsonInput]);
-
-  const filterNodes = useCallback(() => {
-    if (!parsedJson) return;
-    
-    const allNodes = flattenJson(parsedJson);
-    
-    if (!searchTerm.trim()) {
-      setFilteredNodes(allNodes);
+    if (isIndexing) {
+      setIsSearching(true);
       return;
     }
-    
-    const searchLower = searchTerm.toLowerCase();
-    const matchingNodes = allNodes.filter(node => {
-      const keyMatch = node.key.toLowerCase().includes(searchLower);
-      const valueDisplay = getValueDisplay(node.value, node.type).toLowerCase();
-      const valueMatch = valueDisplay.includes(searchLower);
-      const pathMatch = node.path.toLowerCase().includes(searchLower);
-      
-      return keyMatch || valueMatch || pathMatch;
-    });
-    
-    if (showOnlyMatches) {
-      setFilteredNodes(matchingNodes);
-    } else {
-      // Include parent nodes for context
-      const pathsToInclude = new Set<string>();
-      const nodeByPath = new Map(allNodes.map(node => [node.path, node]));
-      matchingNodes.forEach(node => {
-        pathsToInclude.add(node.path);
 
-        let parentPath = node.parentPath;
-        while (parentPath) {
-          pathsToInclude.add(parentPath);
-          parentPath = nodeByPath.get(parentPath)?.parentPath || null;
-        }
-      });
-      
-      const contextNodes = allNodes.filter(node => pathsToInclude.has(node.path));
-      setFilteredNodes(contextNodes);
-    }
-  }, [flattenJson, parsedJson, searchTerm, showOnlyMatches]);
+    setIsSearching(true);
+    const scanBatch = () => {
+      const end = Math.min(cursor + SEARCH_BATCH_SIZE, nodes.length);
+      for (; cursor < end; cursor++) {
+        if (nodeMatches(nodes[cursor], query)) matches.push(cursor);
+      }
 
-  const stats = useMemo(() => {
-    if (!parsedJson) return null;
-
-    return {
-      nodes: flattenJson(parsedJson).length,
-      rootType: Array.isArray(parsedJson) ? 'array' : typeof parsedJson,
-      size: new Blob([jsonInput]).size,
+      if (cancelled) return;
+      if (cursor < nodes.length) {
+        window.setTimeout(scanBatch, 0);
+      } else {
+        matchSourceRef.current = nodes;
+        setMatchIndexes(matches);
+        setActiveMatch(matches.length > 0 ? 0 : -1);
+        setIsSearching(false);
+      }
     };
-  }, [flattenJson, jsonInput, parsedJson]);
 
-  const toggleNode = (path: string) => {
-    const newExpanded = new Set(expandedNodes);
-    if (newExpanded.has(path)) {
-      newExpanded.delete(path);
-    } else {
-      newExpanded.add(path);
+    const timer = window.setTimeout(scanBatch, 120);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [isIndexing, nodeMatches, nodes, searchTerm]);
+
+  const revealNode = useCallback((node: JsonNode) => {
+    setExpandedNodes(previous => {
+      const next = new Set(previous);
+      let parentId = node.parentId;
+      while (parentId) {
+        next.add(parentId);
+        parentId = nodeById.get(parentId)?.parentId || null;
+      }
+      return next;
+    });
+    setPendingScrollId(node.id);
+  }, [nodeById]);
+
+  useEffect(() => {
+    if (matchSourceRef.current !== nodes || activeMatch < 0 || matchIndexes[activeMatch] === undefined) return;
+    revealNode(nodes[matchIndexes[activeMatch]]);
+  }, [activeMatch, matchIndexes, nodes, revealNode]);
+
+  const visibleNodes = useMemo(() => {
+    const visible: JsonNode[] = [];
+    let hiddenBelowLevel: number | null = null;
+
+    for (const node of nodes) {
+      if (hiddenBelowLevel !== null) {
+        if (node.level > hiddenBelowLevel) continue;
+        hiddenBelowLevel = null;
+      }
+
+      visible.push(node);
+      if (node.isContainer && !expandedNodes.has(node.id)) {
+        hiddenBelowLevel = node.level;
+      }
     }
-    setExpandedNodes(newExpanded);
-  };
 
-  const expandAll = () => {
-    const allPaths = filteredNodes.map(node => node.path);
-    setExpandedNodes(new Set(allPaths));
-  };
+    return visible;
+  }, [expandedNodes, nodes]);
 
-  const collapseAll = () => {
-    setExpandedNodes(new Set());
-  };
+  useEffect(() => {
+    if (!pendingScrollId || !viewportRef.current) return;
+    const rowIndex = visibleNodes.findIndex(node => node.id === pendingScrollId);
+    if (rowIndex < 0) return;
 
-  const getValueDisplay = (value: any, type: string): string => {
-    if (value === null) return 'null';
-    if (value === undefined) return 'undefined';
-    if (type === 'string') return `"${value}"`;
-    if (type === 'array') return `Array(${value.length})`;
-    if (type === 'object') return `Object(${Object.keys(value).length})`;
-    return String(value);
-  };
+    const target = Math.max(0, rowIndex * ROW_HEIGHT - viewportHeight / 2 + ROW_HEIGHT / 2);
+    viewportRef.current.scrollTo({ top: target, behavior: 'smooth' });
+    setPendingScrollId(null);
+  }, [pendingScrollId, viewportHeight, visibleNodes]);
 
-  const getTypeColor = (type: string): string => {
-    switch (type) {
-      case 'string': return '#4caf50';
-      case 'number': return '#2196f3';
-      case 'boolean': return '#ff9800';
-      case 'array': return '#9c27b0';
-      case 'object': return '#f44336';
-      case 'null': return '#8b949e';
-      default: return '#666';
-    }
-  };
+  const activeNodeId = matchSourceRef.current === nodes && activeMatch >= 0
+    ? nodes[matchIndexes[activeMatch]]?.id
+    : null;
+  const query = searchTerm.trim().toLocaleLowerCase();
+  const startIndex = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - 8);
+  const endIndex = Math.min(
+    visibleNodes.length,
+    Math.ceil((scrollTop + viewportHeight) / ROW_HEIGHT) + 8,
+  );
+  const renderedNodes = visibleNodes.slice(startIndex, endIndex);
 
-  const copyToClipboard = async (text: string) => {
+  const toggleNode = useCallback((id: string) => {
+    setExpandedNodes(previous => {
+      const next = new Set(previous);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const moveMatch = useCallback((direction: 1 | -1) => {
+    if (matchIndexes.length === 0) return;
+    setActiveMatch(current => {
+      const base = current < 0 ? 0 : current;
+      return (base + direction + matchIndexes.length) % matchIndexes.length;
+    });
+  }, [matchIndexes.length]);
+
+  const copyValue = useCallback(async (node: JsonNode) => {
+    const text = node.isContainer ? JSON.stringify(node.value, null, 2) : String(node.value);
     try {
       await navigator.clipboard.writeText(text);
-    } catch (error) {
-      console.error('Failed to copy to clipboard:', error);
-    }
-  };
+    } catch {}
+  }, []);
 
-  const clearInput = () => {
-    setJsonInput('');
-    setParsedJson(null);
-    setError('');
-    setFilteredNodes([]);
-    setSearchTerm('');
-    setExpandedNodes(new Set());
-  };
-
-  useEffect(() => {
-    parseJson();
-  }, [parseJson]);
-
-  useEffect(() => {
-    filterNodes();
-  }, [searchTerm, showOnlyMatches, parsedJson, filterNodes]);
-
-  const renderTreeNode = (node: JsonNode, allNodes: JsonNode[]): React.ReactNode => {
-    const hasChildren = typeof node.value === 'object' && node.value !== null;
-    const isExpanded = expandedNodes.has(node.path);
-    
-    const children = allNodes.filter(childNode => childNode.parentPath === node.path);
-    const isMatch = !!searchTerm.trim() && (
-      node.key.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      node.path.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      getValueDisplay(node.value, node.type).toLowerCase().includes(searchTerm.toLowerCase())
-    );
-
-    return (
-      <Box key={node.path}>
-        <Box
-          sx={{
-            ml: node.level * 2,
-            py: 0.5,
-            borderLeft: node.level > 0 ? '1px solid' : 'none',
-            borderColor: node.level > 0 ? 'divider' : undefined,
-            pl: node.level > 0 ? 2 : 0,
-            bgcolor: isMatch ? 'action.selected' : 'transparent',
-            borderRadius: 1,
-          }}
-        >
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            {hasChildren ? (
-              <IconButton
-                size="small"
-                onClick={() => toggleNode(node.path)}
-              >
-                <ExpandMore
-                  sx={{
-                    transform: isExpanded ? 'rotate(0deg)' : 'rotate(-90deg)',
-                    transition: 'transform 0.2s'
-                  }}
-                />
-              </IconButton>
-            ) : (
-              <Box sx={{ width: 32 }} /> // Spacer for alignment
-            )}
-            
-            <Typography
-              variant="body2"
-              sx={{ fontWeight: 500, color: 'text.primary' }}
-            >
-              {node.key}:
-            </Typography>
-            
-            <Chip
-              label={node.type}
-              size="small"
-              sx={{
-                backgroundColor: getTypeColor(node.type),
-                color: 'white',
-                fontSize: '10px',
-                height: '20px'
-              }}
-            />
-            
-            <Typography
-              variant="body2"
-              sx={{
-                color: getTypeColor(node.type),
-                fontFamily: 'monospace',
-                flex: 1,
-                minWidth: 0,
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {getValueDisplay(node.value, node.type)}
-            </Typography>
-            
-            <Tooltip title="Copy Value">
-              <IconButton
-                size="small"
-                onClick={() => copyToClipboard(JSON.stringify(node.value, null, 2))}
-              >
-                <ContentCopy fontSize="small" />
-              </IconButton>
-            </Tooltip>
-          </Box>
-        </Box>
-        
-        {/* Render children only if this node is expanded */}
-        {hasChildren && isExpanded && (
-          <Box>
-            {children.map(child => renderTreeNode(child, allNodes))}
-          </Box>
-        )}
-      </Box>
-    );
-  };
-
-  const renderTreeView = () => {
-    // Get root level nodes (level 0)
-    const rootNodes = filteredNodes.filter(node => node.level === 0);
-    
-    return (
-      <Box>
-        {rootNodes.map(node => renderTreeNode(node, filteredNodes))}
-      </Box>
-    );
-  };
-
-  const renderTableView = () => {
-    return (
-      <TableContainer>
-        <Table size="small" stickyHeader>
-          <TableHead>
-            <TableRow>
-              <TableCell sx={{ fontWeight: 600 }}>Path</TableCell>
-              <TableCell sx={{ fontWeight: 600 }}>Key</TableCell>
-              <TableCell sx={{ fontWeight: 600 }}>Type</TableCell>
-              <TableCell sx={{ fontWeight: 600 }}>Value</TableCell>
-              <TableCell sx={{ fontWeight: 600 }}>Level</TableCell>
-              <TableCell sx={{ fontWeight: 600 }}>Actions</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {filteredNodes.map((node) => (
-              <TableRow 
-                key={node.path}
-                sx={{ 
-                  '&:nth-of-type(odd)': { backgroundColor: 'action.hover' },
-                  '&:hover': { backgroundColor: 'action.selected' }
-                }}
-              >
-                <TableCell sx={{ fontFamily: 'monospace', fontSize: '12px' }}>
-                  {node.path}
-                </TableCell>
-                <TableCell sx={{ fontWeight: 500 }}>
-                  {node.key}
-                </TableCell>
-                <TableCell>
-                  <Chip
-                    label={node.type}
-                    size="small"
-                    sx={{
-                      backgroundColor: getTypeColor(node.type),
-                      color: 'white',
-                      fontSize: '10px',
-                      height: '20px'
-                    }}
-                  />
-                </TableCell>
-                <TableCell sx={{ 
-                  fontFamily: 'monospace', 
-                  fontSize: '12px',
-                  maxWidth: '200px',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap'
-                }}>
-                  <Tooltip title={getValueDisplay(node.value, node.type)} arrow>
-                    <span style={{ color: getTypeColor(node.type) }}>
-                      {getValueDisplay(node.value, node.type)}
-                    </span>
-                  </Tooltip>
-                </TableCell>
-                <TableCell>
-                  <Chip
-                    label={node.level}
-                    size="small"
-                    variant="outlined"
-                    sx={{ fontSize: '10px', height: '20px' }}
-                  />
-                </TableCell>
-                <TableCell>
-                  <Tooltip title="Copy Value">
-                    <IconButton
-                      size="small"
-                      onClick={() => copyToClipboard(JSON.stringify(node.value, null, 2))}
-                    >
-                      <ContentCopy fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
-    );
+  const valueColor = (type: JsonType) => {
+    if (type === 'string') return theme.palette.mode === 'dark' ? '#8ec07c' : '#22863a';
+    if (type === 'number') return theme.palette.mode === 'dark' ? '#79c0ff' : '#005cc5';
+    if (type === 'boolean') return theme.palette.mode === 'dark' ? '#d2a8ff' : '#6f42c1';
+    if (type === 'null') return 'text.secondary';
+    return 'text.secondary';
   };
 
   return (
-    <Box>
-      {title && (
-        <Typography variant="h5" gutterBottom sx={{ fontWeight: 600, mb: 3 }}>
-          {title}
-        </Typography>
-      )}
-
-      <GridWrapper container spacing={2}>
-        {showInput && (
-        <GridWrapper item xs={12} md={6}>
-          <Paper elevation={1} sx={{ p: 2, height, display: 'flex', flexDirection: 'column' }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-              <Typography variant="h6">JSON Input</Typography>
-              <Stack direction="row" spacing={1}>
-                <Tooltip title="Copy to Clipboard">
-                  <IconButton onClick={() => copyToClipboard(jsonInput)} color="primary">
-                    <ContentCopy />
-                  </IconButton>
-                </Tooltip>
-                <Tooltip title="Clear">
-                  <IconButton onClick={clearInput} color="error">
-                    <Clear />
-                  </IconButton>
-                </Tooltip>
-              </Stack>
-            </Box>
-            
-            <Box sx={{ flexGrow: 1, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
-              <Editor
-                height="100%"
-                defaultLanguage="json"
-                value={jsonInput}
-                onChange={(value) => setJsonInput(value || '')}
-                theme={darkMode ? 'vs-dark' : 'light'}
-                options={{
-                  minimap: { enabled: false },
-                  scrollBeyondLastLine: false,
-                  fontSize: 14,
-                  lineNumbers: 'on',
-                  wordWrap: 'on'
-                }}
-              />
-            </Box>
-          </Paper>
-        </GridWrapper>
-        )}
-
-        <GridWrapper item xs={12} md={showInput ? 6 : 12}>
-          <Paper elevation={showInput ? 1 : 0} variant={showInput ? 'elevation' : 'outlined'} sx={{ p: compact ? 1.5 : 2, height, display: 'flex', flexDirection: 'column' }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: compact ? 'flex-start' : 'center', gap: 1, mb: 2, flexWrap: 'wrap' }}>
-              <Box>
-                <Typography variant="h6">JSON Explorer</Typography>
-                {stats && (
-                  <Typography variant="caption" color="text.secondary">
-                    {stats.nodes.toLocaleString()} nodes &middot; {stats.rootType} &middot; {stats.size.toLocaleString()} bytes
-                  </Typography>
-                )}
-              </Box>
-              <Stack direction="row" spacing={1} alignItems="center">
-                <Tooltip title="Open theater mode">
-                  <IconButton
-                    size="small"
-                    onClick={() => setTheaterOpen(true)}
-                    sx={{ border: '1px solid', borderColor: 'divider' }}
-                  >
-                    <OpenInFull fontSize="small" />
-                  </IconButton>
-                </Tooltip>
-                <ToggleButtonGroup
-                  value={viewMode}
-                  exclusive
-                  size="small"
-                  onChange={(_, nextMode) => {
-                    if (nextMode) setViewMode(nextMode);
-                  }}
-                >
-                  <ToggleButton value="tree">Tree</ToggleButton>
-                  <ToggleButton value="table">Table</ToggleButton>
-                  <ToggleButton value="raw">Raw</ToggleButton>
-                </ToggleButtonGroup>
-              </Stack>
-            </Box>
-
-            {error && (
-              <Alert severity="error" sx={{ mb: 2 }}>
-                {error}
-              </Alert>
-            )}
-
-            {parsedJson && (
-              <>
-                <Box sx={{ mb: 2 }}>
-                  <TextField
-                    size="small"
-                    placeholder="Search keys, values, or paths..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    InputProps={{
-                      startAdornment: <Search sx={{ mr: 1, color: 'text.secondary' }} />
-                    }}
-                    fullWidth
-                  />
-                </Box>
-
-                <Stack direction="row" spacing={1} sx={{ mb: 2, flexWrap: 'wrap' }} useFlexGap>
-                  <Button size="small" onClick={expandAll} startIcon={<Visibility />}>
-                    Expand All
-                  </Button>
-                  <Button size="small" onClick={collapseAll} startIcon={<VisibilityOff />}>
-                    Collapse All
-                  </Button>
-                  <Button
-                    size="small"
-                    onClick={() => setShowOnlyMatches(!showOnlyMatches)}
-                    startIcon={<FilterList />}
-                    variant={showOnlyMatches ? 'contained' : 'outlined'}
-                  >
-                    Matches Only
-                  </Button>
-                </Stack>
-              </>
-            )}
-            
-            <Box sx={{ flexGrow: 1, overflow: 'auto', border: '1px solid', borderColor: 'divider', borderRadius: 1, p: 1 }}>
-              {parsedJson && viewMode === 'tree' && renderTreeView()}
-              {parsedJson && viewMode === 'table' && renderTableView()}
-              {parsedJson && viewMode === 'raw' && (
-                <pre style={{ margin: 0, fontSize: '12px', lineHeight: 1.4 }}>
-                  {JSON.stringify(parsedJson, null, 2)}
-                </pre>
-              )}
-              {!parsedJson && !error && (
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'text.secondary' }}>
-                  Enter valid JSON to explore
-                </Box>
-              )}
-            </Box>
-          </Paper>
-        </GridWrapper>
-      </GridWrapper>
-
-      <Dialog
-        fullScreen
-        open={theaterOpen}
-        onClose={() => setTheaterOpen(false)}
-        PaperProps={{
-          sx: {
-            bgcolor: 'background.default',
-            backgroundImage: 'none',
-          }
-        }}
+    <Paper variant="outlined" sx={{ height, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <Stack
+        direction={{ xs: 'column', sm: 'row' }}
+        alignItems={{ sm: 'center' }}
+        spacing={1}
+        sx={{ px: 1.5, py: 1.25, borderBottom: '1px solid', borderColor: 'divider' }}
       >
-        <DialogTitle sx={{ borderBottom: '1px solid', borderColor: 'divider', px: 3, py: 1.5 }}>
-          <Stack direction="row" spacing={2} alignItems="center">
-            <Box sx={{ flex: 1, minWidth: 0 }}>
-              <Typography variant="h6">JSON Explorer</Typography>
-              {stats && (
-                <Typography variant="caption" color="text.secondary">
-                  {stats.nodes.toLocaleString()} nodes &middot; {stats.rootType} &middot; {stats.size.toLocaleString()} bytes
+        <Box sx={{ minWidth: 145 }}>
+          <Typography variant="body2" fontWeight={600}>Explorer</Typography>
+          <Typography variant="caption" color="text.secondary">
+            {isIndexing ? 'Indexing…' : `${nodes.length.toLocaleString()} nodes`}
+            {sourceSize > 0 ? ` · ${(sourceSize / 1024).toLocaleString(undefined, { maximumFractionDigits: 1 })} KB` : ''}
+            {isLarge ? ' · large JSON mode' : ''}
+          </Typography>
+        </Box>
+
+        <TextField
+          size="small"
+          value={searchTerm}
+          onChange={event => setSearchTerm(event.target.value)}
+          onKeyDown={event => {
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              moveMatch(event.shiftKey ? -1 : 1);
+            }
+          }}
+          placeholder="Find key, value, or path"
+          sx={{ flex: 1, minWidth: 180 }}
+          inputProps={{ 'aria-label': 'Find in JSON' }}
+          InputProps={{
+            endAdornment: (
+              <InputAdornment position="end">
+                <Typography data-json-match-count variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
+                  {isSearching ? 'Searching…' : query ? `${activeMatch >= 0 ? activeMatch + 1 : 0}/${matchIndexes.length}` : ''}
                 </Typography>
-              )}
-            </Box>
-            <ToggleButtonGroup
-              value={viewMode}
-              exclusive
-              size="small"
-              onChange={(_, nextMode) => {
-                if (nextMode) setViewMode(nextMode);
-              }}
-            >
-              <ToggleButton value="tree">Tree</ToggleButton>
-              <ToggleButton value="table">Table</ToggleButton>
-              <ToggleButton value="raw">Raw</ToggleButton>
-            </ToggleButtonGroup>
-            <Tooltip title="Close theater mode">
-              <IconButton onClick={() => setTheaterOpen(false)}>
-                <Close />
-              </IconButton>
-            </Tooltip>
+                <Tooltip title="Previous match (Shift+Enter)">
+                  <span>
+                    <IconButton aria-label="Previous JSON match" size="small" disabled={matchIndexes.length === 0} onClick={() => moveMatch(-1)}>
+                      <KeyboardArrowUp fontSize="small" />
+                    </IconButton>
+                  </span>
+                </Tooltip>
+                <Tooltip title="Next match (Enter)">
+                  <span>
+                    <IconButton aria-label="Next JSON match" size="small" disabled={matchIndexes.length === 0} onClick={() => moveMatch(1)}>
+                      <KeyboardArrowDown fontSize="small" />
+                    </IconButton>
+                  </span>
+                </Tooltip>
+              </InputAdornment>
+            ),
+          }}
+        />
+
+        <Tooltip title="Collapse all">
+          <IconButton aria-label="Collapse JSON tree" size="small" onClick={() => setExpandedNodes(new Set(['$']))}>
+            <UnfoldLess fontSize="small" />
+          </IconButton>
+        </Tooltip>
+      </Stack>
+
+      <Box
+        ref={viewportRef}
+        data-json-viewport
+        onScroll={event => setScrollTop(event.currentTarget.scrollTop)}
+        sx={{ flex: 1, minHeight: 0, overflow: 'auto', position: 'relative', fontFamily: 'monospace' }}
+      >
+        {nodes.length === 0 && (
+          <Stack alignItems="center" justifyContent="center" sx={{ position: 'absolute', inset: 0 }}>
+            <Typography variant="body2" color="text.secondary">
+              {isIndexing ? 'Indexing JSON…' : 'Enter valid JSON to explore'}
+            </Typography>
           </Stack>
-        </DialogTitle>
+        )}
+        <Box sx={{ height: visibleNodes.length * ROW_HEIGHT, position: 'relative', minWidth: '100%' }}>
+          {renderedNodes.map((node, offset) => {
+            const rowIndex = startIndex + offset;
+            const isExpanded = expandedNodes.has(node.id);
+            const isCurrent = node.id === activeNodeId;
+            const isMatch = !!query && nodeMatches(node, query);
 
-        <DialogContent sx={{ p: 3, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-          {error && (
-            <Alert severity="error" sx={{ mb: 2 }}>
-              {error}
-            </Alert>
-          )}
+            return (
+              <Box
+                key={node.id}
+                data-json-node-row
+                data-json-node-id={node.id}
+                data-json-active={isCurrent ? 'true' : undefined}
+                sx={{
+                  position: 'absolute',
+                  top: rowIndex * ROW_HEIGHT,
+                  left: 0,
+                  right: 0,
+                  height: ROW_HEIGHT,
+                  display: 'flex',
+                  alignItems: 'center',
+                  pl: `${8 + node.level * 16}px`,
+                  pr: 0.5,
+                  bgcolor: isCurrent
+                    ? alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.24 : 0.13)
+                    : isMatch
+                      ? alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.1 : 0.06)
+                      : 'transparent',
+                  borderBottom: '1px solid',
+                  borderColor: alpha(theme.palette.divider, 0.45),
+                  '&:hover': {
+                    bgcolor: isCurrent ? undefined : 'action.hover',
+                    '& .copy-json-value': { opacity: 1 },
+                  },
+                }}
+              >
+                {node.isContainer ? (
+                  <IconButton aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${node.path}`} size="small" onClick={() => toggleNode(node.id)} sx={{ width: 24, height: 24, mr: 0.5 }}>
+                    <ChevronRight
+                      sx={{
+                        fontSize: 18,
+                        transform: isExpanded ? 'rotate(90deg)' : 'none',
+                        transition: 'transform 120ms ease',
+                      }}
+                    />
+                  </IconButton>
+                ) : (
+                  <Box sx={{ width: 28, flexShrink: 0 }} />
+                )}
 
-          {parsedJson && (
-            <>
-              <Box sx={{ mb: 2 }}>
-                <TextField
-                  size="small"
-                  placeholder="Search keys, values, or paths..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  InputProps={{
-                    startAdornment: <Search sx={{ mr: 1, color: 'text.secondary' }} />
+                <Typography component="span" sx={{ fontFamily: 'inherit', fontSize: '0.78rem', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                  {node.key}
+                </Typography>
+                <Typography component="span" color="text.secondary" sx={{ mx: 0.75, fontFamily: 'inherit', fontSize: '0.78rem' }}>
+                  {node.isContainer ? '' : ':'}
+                </Typography>
+                <Typography
+                  component="span"
+                  sx={{
+                    minWidth: 0,
+                    flex: 1,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    fontFamily: 'inherit',
+                    fontSize: '0.78rem',
+                    color: valueColor(node.type),
                   }}
-                  fullWidth
-                />
-              </Box>
-
-              <Stack direction="row" spacing={1} sx={{ mb: 2, flexWrap: 'wrap' }} useFlexGap>
-                <Button size="small" onClick={expandAll} startIcon={<Visibility />}>
-                  Expand All
-                </Button>
-                <Button size="small" onClick={collapseAll} startIcon={<VisibilityOff />}>
-                  Collapse All
-                </Button>
-                <Button
-                  size="small"
-                  onClick={() => setShowOnlyMatches(!showOnlyMatches)}
-                  startIcon={<FilterList />}
-                  variant={showOnlyMatches ? 'contained' : 'outlined'}
                 >
-                  Matches Only
-                </Button>
-              </Stack>
-            </>
-          )}
-
-          <Paper
-            variant="outlined"
-            sx={{
-              flex: 1,
-              minHeight: 0,
-              overflow: 'auto',
-              p: 2,
-              bgcolor: 'background.paper',
-            }}
-          >
-            {parsedJson && viewMode === 'tree' && renderTreeView()}
-            {parsedJson && viewMode === 'table' && renderTableView()}
-            {parsedJson && viewMode === 'raw' && (
-              <pre style={{ margin: 0, fontSize: '13px', lineHeight: 1.5 }}>
-                {JSON.stringify(parsedJson, null, 2)}
-              </pre>
-            )}
-            {!parsedJson && !error && (
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'text.secondary' }}>
-                Enter valid JSON to explore
+                  {node.summary}
+                </Typography>
+                <Tooltip title="Copy value">
+                  <IconButton
+                    className="copy-json-value"
+                    aria-label={`Copy ${node.path}`}
+                    size="small"
+                    onClick={() => copyValue(node)}
+                    sx={{ opacity: { xs: 1, sm: 0 }, width: 26, height: 26, flexShrink: 0 }}
+                  >
+                    <ContentCopy sx={{ fontSize: 14 }} />
+                  </IconButton>
+                </Tooltip>
               </Box>
-            )}
-          </Paper>
-        </DialogContent>
-      </Dialog>
-    </Box>
+            );
+          })}
+        </Box>
+      </Box>
+    </Paper>
   );
 };
 

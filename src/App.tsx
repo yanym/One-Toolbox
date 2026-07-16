@@ -7,7 +7,6 @@ import {
   Toolbar,
   Typography,
   Box,
-  Paper,
   IconButton,
   Tooltip,
   Fade,
@@ -19,7 +18,6 @@ import {
   ListItemIcon,
   ListItemText,
   Drawer,
-  Chip,
   Divider,
   alpha
 } from '@mui/material';
@@ -27,7 +25,6 @@ import {
   Code,
   CompareArrows,
   Transform,
-  AccountTree,
   TextFields,
   DarkMode,
   LightMode,
@@ -50,7 +47,6 @@ import './App.css';
 import JsonValidator from './components/JsonValidator';
 import JsonSerializer from './components/JsonSerializer';
 import JsonDiff from './components/JsonDiff';
-import JsonViewer from './components/JsonViewer';
 import StringEscape from './components/StringEscape';
 import XmlFormatter from './components/XmlFormatter';
 import Base64Converter from './components/Base64Converter';
@@ -106,15 +102,6 @@ function App() {
       category: 'json',
       description: 'Compare two JSON objects visually',
       component: <JsonDiff />,
-    },
-    {
-      id: 'json-viewer',
-      label: 'JSON Viewer',
-      shortLabel: 'View',
-      icon: <AccountTree />,
-      category: 'json',
-      description: 'Explore JSON as an interactive tree',
-      component: <JsonViewer />,
     },
     {
       id: 'json-serializer',

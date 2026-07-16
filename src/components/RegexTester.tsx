@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import {
   Box,
   Typography,
@@ -32,6 +32,35 @@ const PRESETS: { label: string; pattern: string; flags: string; sample: string }
   { label: 'UUID', pattern: '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', flags: 'gi', sample: 'id=550e8400-e29b-41d4-a716-446655440000' },
 ];
 
+const REGEX_WORKER_SOURCE = `
+self.onmessage = function(event) {
+  var pattern = event.data.pattern;
+  var flags = event.data.flags;
+  var input = event.data.input;
+  var limit = event.data.limit;
+  try {
+    var regex = new RegExp(pattern, flags.indexOf('g') >= 0 ? flags : flags + 'g');
+    var matches = [];
+    var match;
+    while ((match = regex.exec(input)) !== null && matches.length < limit) {
+      matches.push({
+        match: match[0],
+        index: match.index,
+        groups: Array.prototype.slice.call(match, 1).map(function(value) { return value === undefined ? '' : value; }),
+        namedGroups: match.groups || {}
+      });
+      if (match.index === regex.lastIndex) regex.lastIndex++;
+    }
+    self.postMessage({ matches: matches, truncated: matches.length === limit });
+  } catch (error) {
+    self.postMessage({ error: error && error.message ? error.message : 'Invalid regular expression' });
+  }
+};
+`;
+
+const MAX_MATCHES = 1000;
+const REGEX_TIMEOUT_MS = 800;
+
 const RegexTester: React.FC = () => {
   const theme = useTheme();
   const [pattern, setPattern] = useState<string>('(\\w+)@(\\w+\\.\\w+)');
@@ -39,6 +68,10 @@ const RegexTester: React.FC = () => {
   const [testString, setTestString] = useState<string>(
     'Contact: alice@example.com, bob@test.co.uk, support@mysite.org'
   );
+  const [matches, setMatches] = useState<MatchInfo[]>([]);
+  const [error, setError] = useState('');
+  const [isTesting, setIsTesting] = useState(false);
+  const [truncated, setTruncated] = useState(false);
 
   const toggleFlag = (f: string) => {
     setFlags(prev => {
@@ -51,37 +84,60 @@ const RegexTester: React.FC = () => {
 
   const flagsStr = useMemo(() => Array.from(flags).sort().join(''), [flags]);
 
-  const { regex, error } = useMemo(() => {
-    if (!pattern) return { regex: null as RegExp | null, error: '' };
-    try {
-      const needsGlobal = flags.has('g') ? flagsStr : flagsStr + 'g';
-      return { regex: new RegExp(pattern, needsGlobal), error: '' };
-    } catch (e: any) {
-      return { regex: null, error: e.message || 'Invalid regex' };
+  useEffect(() => {
+    if (!pattern) {
+      setMatches([]);
+      setError('');
+      setIsTesting(false);
+      setTruncated(false);
+      return;
     }
-  }, [pattern, flagsStr, flags]);
 
-  const matches: MatchInfo[] = useMemo(() => {
-    if (!regex) return [];
-    const out: MatchInfo[] = [];
-    let m: RegExpExecArray | null;
-    let guard = 0;
-    const re = new RegExp(regex.source, regex.flags);
-    while ((m = re.exec(testString)) !== null) {
-      out.push({
-        match: m[0],
-        index: m.index,
-        groups: m.slice(1).map(g => (g === undefined ? '' : g)),
-        namedGroups: (m.groups as Record<string, string>) || {},
-      });
-      if (m.index === re.lastIndex) re.lastIndex++;
-      if (++guard > 5000) break;
-    }
-    return out;
-  }, [regex, testString]);
+    let worker: Worker | null = null;
+    let workerUrl = '';
+    let timeoutId = 0;
+    const startId = window.setTimeout(() => {
+      workerUrl = URL.createObjectURL(new Blob([REGEX_WORKER_SOURCE], { type: 'text/javascript' }));
+      worker = new Worker(workerUrl);
+      setIsTesting(true);
+      setError('');
+
+      timeoutId = window.setTimeout(() => {
+        worker?.terminate();
+        setMatches([]);
+        setTruncated(false);
+        setIsTesting(false);
+        setError(`Pattern exceeded ${REGEX_TIMEOUT_MS} ms and was stopped.`);
+      }, REGEX_TIMEOUT_MS);
+
+      worker.onmessage = event => {
+        window.clearTimeout(timeoutId);
+        setIsTesting(false);
+        if (event.data.error) {
+          setError(event.data.error);
+          setMatches([]);
+          setTruncated(false);
+        } else {
+          setError('');
+          setMatches(event.data.matches);
+          setTruncated(event.data.truncated);
+        }
+        worker?.terminate();
+      };
+
+      worker.postMessage({ pattern, flags: flagsStr, input: testString, limit: MAX_MATCHES });
+    }, 120);
+
+    return () => {
+      window.clearTimeout(startId);
+      window.clearTimeout(timeoutId);
+      worker?.terminate();
+      if (workerUrl) URL.revokeObjectURL(workerUrl);
+    };
+  }, [flagsStr, pattern, testString]);
 
   const highlighted = useMemo(() => {
-    if (!regex || matches.length === 0 || error) return null;
+    if (matches.length === 0 || error) return null;
     const parts: Array<{ text: string; match: boolean }> = [];
     let cursor = 0;
     for (const m of matches) {
@@ -91,7 +147,7 @@ const RegexTester: React.FC = () => {
     }
     if (cursor < testString.length) parts.push({ text: testString.slice(cursor), match: false });
     return parts;
-  }, [regex, matches, testString, error]);
+  }, [matches, testString, error]);
 
   const copyToClipboard = useCallback(async (text: string) => {
     try { await navigator.clipboard.writeText(text); } catch {}
@@ -182,7 +238,7 @@ const RegexTester: React.FC = () => {
                 <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>Test String</Typography>
                 <Box sx={{ flexGrow: 1 }} />
                 <Typography variant="caption" color="text.secondary">
-                  {matches.length} match{matches.length === 1 ? '' : 'es'}
+                  {isTesting ? 'Testing…' : `${matches.length}${truncated ? '+' : ''} match${matches.length === 1 ? '' : 'es'}`}
                 </Typography>
               </Stack>
               <TextField
@@ -252,8 +308,13 @@ const RegexTester: React.FC = () => {
 
             <Paper elevation={1} sx={{ p: 2 }}>
               <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
-                Match Details ({matches.length})
+                Match Details ({matches.length}{truncated ? '+' : ''})
               </Typography>
+              {truncated && (
+                <Alert severity="info" sx={{ mb: 1, py: 0.25 }}>
+                  Showing the first {MAX_MATCHES.toLocaleString()} matches.
+                </Alert>
+              )}
               <Box sx={{ maxHeight: 420, overflow: 'auto' }}>
                 {matches.length === 0 ? (
                   <Typography variant="body2" color="text.secondary">No matches found.</Typography>
