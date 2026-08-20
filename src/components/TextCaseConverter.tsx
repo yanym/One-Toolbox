@@ -170,7 +170,6 @@ const TextCaseConverter: React.FC = () => {
                         </Typography>
                       </Box>
                       <Tooltip title="Copy">
-                      >
                         <span>
                           <IconButton
                             size="small"

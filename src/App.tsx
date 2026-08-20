@@ -43,6 +43,7 @@ import {
   Article,
   TableChart,
   TextFormat,
+  Fingerprint,
 } from '@mui/icons-material';
 import './App.css';
 import JsonValidator from './components/JsonValidator';
@@ -61,6 +62,7 @@ import JwtDecoder from './components/JwtDecoder';
 import MarkdownPreviewer from './components/MarkdownPreviewer';
 import MarkdownTableConverter from './components/MarkdownTableConverter';
 import TextCaseConverter from './components/TextCaseConverter';
+import UuidGenerator from './components/UuidGenerator';
 
 interface ToolConfig {
   id: string;
@@ -194,6 +196,15 @@ function App() {
       category: 'text',
       description: 'Convert Unix timestamps across all formats',
       component: <TimestampConverter />,
+    },
+    {
+      id: 'uuid-generator',
+      label: 'UUID Generator',
+      shortLabel: 'UUID',
+      icon: <Fingerprint />,
+      category: 'text',
+      description: 'Generate UUID v4 in bulk and copy quickly',
+      component: <UuidGenerator />,
     },
     {
       id: 'case-converter',

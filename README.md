@@ -20,6 +20,7 @@ A fast, offline-capable developer toolbox built with React and Material UI.
 | Protobuf Converter | Encode and decode Protocol Buffers |
 | URL Encoder/Decoder | Encode/decode URLs with nested query parameter parsing |
 | Timestamp Converter | Convert Unix timestamps (s/ms/µs/ns), ISO 8601, and date strings across all formats and US timezones |
+| UUID Generator | Generate RFC 4122 v4 UUIDs in bulk with copy and refresh options |
 | Regex Tester | Test regular expressions with timeout protection |
 | Text Diff | Compare text and code side by side |
 | Color Converter | Convert color formats and check WCAG contrast |
