@@ -25,6 +25,12 @@ A fast, offline-capable developer toolbox built with React and Material UI.
 | Text Diff | Compare text and code side by side |
 | Color Converter | Convert color formats and check WCAG contrast |
 | Text Case Converter | Convert text into common naming cases (camelCase, snake_case, kebab-case, etc.) |
+| UTM Campaign Builder | Build and parse ad URLs with campaign tracking parameters |
+| Ad KPI Calculator | Compute CTR/CPC/CPM/CPA and forecast spend/impression targets |
+| Ad Tracking Inspector | Parse URLs/queries to extract ad click IDs and tracking tokens |
+| Ad Copy Compliance | Check ad copy lengths against Google/Meta/LinkedIn channel limits |
+| Campaign Naming Linter | Validate naming schemes, duplicates, and format consistency |
+| Ad Pacing Planner | Estimate daily pace, remaining budget, and forecast flight KPIs |
 
 ## Running locally
 

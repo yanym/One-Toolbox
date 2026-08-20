@@ -44,6 +44,12 @@ import {
   TableChart,
   TextFormat,
   Fingerprint,
+  Campaign,
+  Analytics,
+  DataSaverOn,
+  Check,
+  Rule,
+  Timeline,
 } from '@mui/icons-material';
 import './App.css';
 import JsonValidator from './components/JsonValidator';
@@ -63,13 +69,19 @@ import MarkdownPreviewer from './components/MarkdownPreviewer';
 import MarkdownTableConverter from './components/MarkdownTableConverter';
 import TextCaseConverter from './components/TextCaseConverter';
 import UuidGenerator from './components/UuidGenerator';
+import UtmCampaignBuilder from './components/UtmCampaignBuilder';
+import AdKpiCalculator from './components/AdKpiCalculator';
+import AdTrackingInspector from './components/AdTrackingInspector';
+import AdCopyCompliance from './components/AdCopyCompliance';
+import CampaignNamingLinter from './components/CampaignNamingLinter';
+import AdPacingPlanner from './components/AdPacingPlanner';
 
 interface ToolConfig {
   id: string;
   label: string;
   shortLabel: string;
   icon: React.ReactElement;
-  category: 'json' | 'markdown' | 'text' | 'encoding' | 'web' | 'security';
+  category: 'json' | 'markdown' | 'text' | 'encoding' | 'web' | 'security' | 'marketing';
   description: string;
   component: React.ReactNode;
 }
@@ -207,6 +219,60 @@ function App() {
       component: <UuidGenerator />,
     },
     {
+      id: 'utm-builder',
+      label: 'UTM Campaign Builder',
+      shortLabel: 'UTM',
+      icon: <Campaign />,
+      category: 'marketing',
+      description: 'Build and parse marketing campaign URLs with UTM parameters',
+      component: <UtmCampaignBuilder />,
+    },
+    {
+      id: 'ad-kpi',
+      label: 'Ad KPI Calculator',
+      shortLabel: 'KPI',
+      icon: <Analytics />,
+      category: 'marketing',
+      description: 'Compute CTR/CPC/CPM/CPA and forecast with budget targets',
+      component: <AdKpiCalculator />,
+    },
+    {
+      id: 'ad-tracker',
+      label: 'Ad Tracking Inspector',
+      shortLabel: 'Tracker',
+      icon: <DataSaverOn />,
+      category: 'marketing',
+      description: 'Extract ad click identifiers and parse tracking params quickly',
+      component: <AdTrackingInspector />,
+    },
+    {
+      id: 'ad-copy-compliance',
+      label: 'Ad Copy Compliance',
+      shortLabel: 'Copy',
+      icon: <Check />,
+      category: 'marketing',
+      description: 'Check campaign copy fields against channel-specific character limits',
+      component: <AdCopyCompliance />,
+    },
+    {
+      id: 'campaign-name-linter',
+      label: 'Campaign Naming Linter',
+      shortLabel: 'Naming',
+      icon: <Rule />,
+      category: 'marketing',
+      description: 'Validate naming conventions, duplicates, and segment rules',
+      component: <CampaignNamingLinter />,
+    },
+    {
+      id: 'ad-pacing-planner',
+      label: 'Ad Pacing Planner',
+      shortLabel: 'Pacing',
+      icon: <Timeline />,
+      category: 'marketing',
+      description: 'Forecast remaining spend, daily pace, and end-flight KPIs',
+      component: <AdPacingPlanner />,
+    },
+    {
       id: 'case-converter',
       label: 'Text Case Converter',
       shortLabel: 'Case',
@@ -249,6 +315,7 @@ function App() {
     { id: 'markdown', label: 'Markdown' },
     { id: 'text', label: 'Text & Markup' },
     { id: 'encoding', label: 'Encoding' },
+    { id: 'marketing', label: 'Marketing' },
     { id: 'web', label: 'Web & Design' },
     { id: 'security', label: 'Security' },
   ] as const;
