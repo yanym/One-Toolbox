@@ -6,6 +6,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Box,
   IconButton,
@@ -20,9 +21,11 @@ import {
 } from '@mui/material';
 import {
   ChevronRight,
+  Close,
   ContentCopy,
   KeyboardArrowDown,
   KeyboardArrowUp,
+  OpenInFull,
   UnfoldLess,
 } from '@mui/icons-material';
 
@@ -56,7 +59,7 @@ interface JsonViewerProps {
   height?: number | string;
 }
 
-const ROW_HEIGHT = 32;
+const ROW_HEIGHT = 34;
 const SEARCH_BATCH_SIZE = 5000;
 const INDEX_BATCH_SIZE = 10000;
 
@@ -115,7 +118,9 @@ const indexNode = (current: PendingJsonNode, nodes: JsonNode[], stack: PendingJs
 
 const JsonViewer: React.FC<JsonViewerProps> = ({ data, sourceSize = 0, height = 620 }) => {
   const theme = useTheme();
+  const resolvedHeight = typeof height === 'number' ? `${height}px` : height;
   const viewportRef = useRef<HTMLDivElement | null>(null);
+  const scrollTopRef = useRef(0);
   const matchSourceRef = useRef<JsonNode[] | null>(null);
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(() => new Set(['$']));
   const [searchTerm, setSearchTerm] = useState('');
@@ -127,6 +132,23 @@ const JsonViewer: React.FC<JsonViewerProps> = ({ data, sourceSize = 0, height = 
   const [viewportHeight, setViewportHeight] = useState(400);
   const [nodes, setNodes] = useState<JsonNode[]>([]);
   const [isIndexing, setIsIndexing] = useState(false);
+  const [theaterOpen, setTheaterOpen] = useState(false);
+
+  useEffect(() => {
+    if (!theaterOpen) return;
+
+    const previousOverflow = document.body.style.overflow;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setTheaterOpen(false);
+    };
+
+    document.body.style.overflow = 'hidden';
+    window.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [theaterOpen]);
 
   useEffect(() => {
     let cancelled = false;
@@ -195,11 +217,12 @@ const JsonViewer: React.FC<JsonViewerProps> = ({ data, sourceSize = 0, height = 
     if (!element) return;
 
     const updateHeight = () => setViewportHeight(element.clientHeight);
+    element.scrollTop = scrollTopRef.current;
     updateHeight();
     const observer = new ResizeObserver(updateHeight);
     observer.observe(element);
     return () => observer.disconnect();
-  }, []);
+  }, [theaterOpen]);
 
   useEffect(() => {
     const query = searchTerm.trim().toLocaleLowerCase();
@@ -334,13 +357,48 @@ const JsonViewer: React.FC<JsonViewerProps> = ({ data, sourceSize = 0, height = 
     return 'text.secondary';
   };
 
-  return (
-    <Paper variant="outlined" sx={{ height, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+  const nodeTypeTag = (node: JsonNode) => {
+    if (!node.isContainer) return null;
+    return node.type === 'array'
+      ? <Typography component="span" sx={{ mr: 0.6, color: 'text.secondary', fontSize: '0.62rem', textTransform: 'uppercase', letterSpacing: '0.1em' }}>{'[ ]'}</Typography>
+      : <Typography component="span" sx={{ mr: 0.6, color: 'text.secondary', fontSize: '0.62rem', textTransform: 'uppercase', letterSpacing: '0.1em' }}>{'{ }'}</Typography>;
+  };
+
+  const viewer = (
+      <Paper
+      data-json-theater={theaterOpen ? 'true' : 'false'}
+      variant="outlined"
+      sx={{
+        height: theaterOpen ? '100dvh' : resolvedHeight,
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
+        ...(theaterOpen && {
+          position: 'fixed',
+          inset: 0,
+          width: '100vw',
+          maxWidth: 'none',
+          zIndex: theme.zIndex.modal,
+          border: 0,
+          borderRadius: 0,
+          bgcolor: 'background.paper',
+        }),
+      }}
+    >
       <Stack
         direction={{ xs: 'column', sm: 'row' }}
         alignItems={{ sm: 'center' }}
         spacing={1}
-        sx={{ px: 1.5, py: 1.25, borderBottom: '1px solid', borderColor: 'divider' }}
+        sx={{
+          px: 1.5,
+          py: 1.25,
+          borderBottom: '1px solid',
+          borderColor: 'divider',
+          position: 'sticky',
+          top: 0,
+          zIndex: 2,
+          bgcolor: 'background.paper',
+        }}
       >
         <Box sx={{ minWidth: 145 }}>
           <Typography variant="body2" fontWeight={600}>Explorer</Typography>
@@ -355,6 +413,7 @@ const JsonViewer: React.FC<JsonViewerProps> = ({ data, sourceSize = 0, height = 
           size="small"
           value={searchTerm}
           onChange={event => setSearchTerm(event.target.value)}
+          autoComplete="off"
           onKeyDown={event => {
             if (event.key === 'Enter') {
               event.preventDefault();
@@ -389,20 +448,34 @@ const JsonViewer: React.FC<JsonViewerProps> = ({ data, sourceSize = 0, height = 
           }}
         />
 
-        <Tooltip title="Collapse all">
-          <IconButton aria-label="Collapse JSON tree" size="small" onClick={() => setExpandedNodes(new Set(['$']))}>
-            <UnfoldLess fontSize="small" />
-          </IconButton>
-        </Tooltip>
+        <Stack direction="row" spacing={0.5} alignItems="center">
+          <Tooltip title="Collapse all">
+            <IconButton aria-label="Collapse JSON tree" size="small" onClick={() => setExpandedNodes(new Set(['$']))}>
+              <UnfoldLess fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title={theaterOpen ? 'Close theater mode (Esc)' : 'Open theater mode'}>
+            <IconButton
+              aria-label={theaterOpen ? 'Close JSON theater mode' : 'Open JSON theater mode'}
+              size="small"
+              onClick={() => setTheaterOpen(previous => !previous)}
+            >
+              {theaterOpen ? <Close fontSize="small" /> : <OpenInFull fontSize="small" />}
+            </IconButton>
+          </Tooltip>
+        </Stack>
       </Stack>
 
       <Box
         ref={viewportRef}
         data-json-viewport
-        onScroll={event => setScrollTop(event.currentTarget.scrollTop)}
+        onScroll={event => {
+          scrollTopRef.current = event.currentTarget.scrollTop;
+          setScrollTop(event.currentTarget.scrollTop);
+        }}
         sx={{ flex: 1, minHeight: 0, overflow: 'auto', position: 'relative', fontFamily: 'monospace' }}
       >
-        {nodes.length === 0 && (
+                {nodes.length === 0 && (
           <Stack alignItems="center" justifyContent="center" sx={{ position: 'absolute', inset: 0 }}>
             <Typography variant="body2" color="text.secondary">
               {isIndexing ? 'Indexing JSON…' : 'Enter valid JSON to explore'}
@@ -431,6 +504,7 @@ const JsonViewer: React.FC<JsonViewerProps> = ({ data, sourceSize = 0, height = 
                   display: 'flex',
                   alignItems: 'center',
                   pl: `${8 + node.level * 16}px`,
+                  gap: 0.5,
                   pr: 0.5,
                   bgcolor: isCurrent
                     ? alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.24 : 0.13)
@@ -443,8 +517,9 @@ const JsonViewer: React.FC<JsonViewerProps> = ({ data, sourceSize = 0, height = 
                     bgcolor: isCurrent ? undefined : 'action.hover',
                     '& .copy-json-value': { opacity: 1 },
                   },
-                }}
-              >
+                  }}
+                >
+                {nodeTypeTag(node)}
                 {node.isContainer ? (
                   <IconButton aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${node.path}`} size="small" onClick={() => toggleNode(node.id)} sx={{ width: 24, height: 24, mr: 0.5 }}>
                     <ChevronRight
@@ -459,9 +534,11 @@ const JsonViewer: React.FC<JsonViewerProps> = ({ data, sourceSize = 0, height = 
                   <Box sx={{ width: 28, flexShrink: 0 }} />
                 )}
 
-                <Typography component="span" sx={{ fontFamily: 'inherit', fontSize: '0.78rem', fontWeight: 600, whiteSpace: 'nowrap' }}>
-                  {node.key}
-                </Typography>
+                <Tooltip title={node.path} enterDelay={250}>
+                  <Typography component="span" sx={{ fontFamily: 'inherit', fontSize: '0.78rem', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {node.key}
+                  </Typography>
+                </Tooltip>
                 <Typography component="span" color="text.secondary" sx={{ mx: 0.75, fontFamily: 'inherit', fontSize: '0.78rem' }}>
                   {node.isContainer ? '' : ':'}
                 </Typography>
@@ -498,6 +575,8 @@ const JsonViewer: React.FC<JsonViewerProps> = ({ data, sourceSize = 0, height = 
       </Box>
     </Paper>
   );
+
+  return theaterOpen ? createPortal(viewer, document.body) : viewer;
 };
 
 export default JsonViewer;

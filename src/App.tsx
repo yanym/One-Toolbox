@@ -42,6 +42,7 @@ import {
   Key,
   Article,
   TableChart,
+  TextFormat,
 } from '@mui/icons-material';
 import './App.css';
 import JsonValidator from './components/JsonValidator';
@@ -59,6 +60,7 @@ import ColorConverter from './components/ColorConverter';
 import JwtDecoder from './components/JwtDecoder';
 import MarkdownPreviewer from './components/MarkdownPreviewer';
 import MarkdownTableConverter from './components/MarkdownTableConverter';
+import TextCaseConverter from './components/TextCaseConverter';
 
 interface ToolConfig {
   id: string;
@@ -192,6 +194,15 @@ function App() {
       category: 'text',
       description: 'Convert Unix timestamps across all formats',
       component: <TimestampConverter />,
+    },
+    {
+      id: 'case-converter',
+      label: 'Text Case Converter',
+      shortLabel: 'Case',
+      icon: <TextFormat />,
+      category: 'text',
+      description: 'Convert text case instantly between common naming styles',
+      component: <TextCaseConverter />,
     },
     {
       id: 'regex-tester',

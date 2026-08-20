@@ -23,6 +23,7 @@ A fast, offline-capable developer toolbox built with React and Material UI.
 | Regex Tester | Test regular expressions with timeout protection |
 | Text Diff | Compare text and code side by side |
 | Color Converter | Convert color formats and check WCAG contrast |
+| Text Case Converter | Convert text into common naming cases (camelCase, snake_case, kebab-case, etc.) |
 
 ## Running locally
 

@@ -17,7 +17,8 @@ import {
   Snackbar,
   Fade,
   Collapse,
-  useTheme
+  useTheme,
+  useMediaQuery,
 } from '@mui/material';
 import GridWrapper from './GridWrapper';
 import JsonViewer from './JsonViewer';
@@ -108,6 +109,7 @@ const SAMPLE_JSON = JSON.stringify({
 
 const JsonValidator: React.FC = () => {
   const theme = useTheme();
+  const isWideLayout = useMediaQuery(theme.breakpoints.up('md'));
   const [jsonInput, setJsonInput] = useState(SAMPLE_JSON);
   const [validationResult, setValidationResult] = useState<{
     isValid: boolean;
@@ -128,6 +130,9 @@ const JsonValidator: React.FC = () => {
   const showSnackbar = useCallback((message: string, severity: 'success' | 'error' | 'info' | 'warning') => {
     setSnackbar({ open: true, message, severity });
   }, []);
+
+  const editorHeight = isWideLayout ? '38vh' : '320px';
+  const explorerHeight = isWideLayout ? '44vh' : '380px';
 
   const validateJson = useCallback((value: string) => {
     if (!value.trim()) {
@@ -309,7 +314,7 @@ const JsonValidator: React.FC = () => {
               elevation={1}
               sx={{
                 p: 2,
-                height: { xs: '360px', md: '340px' },
+                height: editorHeight,
                 display: 'flex',
                 flexDirection: 'column',
               }}
@@ -408,7 +413,7 @@ const JsonValidator: React.FC = () => {
             <JsonViewer
               data={deferredParsedJson}
               sourceSize={jsonInput.length}
-              height={620}
+              height={explorerHeight}
             />
           </Stack>
         </GridWrapper>
@@ -550,7 +555,7 @@ const JsonValidator: React.FC = () => {
                     • Supports large JSON files up to 10MB
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
-                    • Auto-validation with 300ms debounce
+                    • Auto-validation with {jsonInput.length > 1_000_000 ? '650ms' : '250ms'} debounce
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
                     • Error location detection (line/column)
